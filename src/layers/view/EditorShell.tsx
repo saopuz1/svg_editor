@@ -5,6 +5,7 @@ import type { AnnotationField, AutoModifierConfig, NodeBusiness, NodeId } from '
 import { serializeDocument } from '../data/serialization';
 import { createCommand, createRectNode, createTextboxNode } from '../edit/commands';
 import type { ToolId } from '../edit/tools';
+import { getNodeFabricType, readNodeNumberProp, readNodeStringProp } from '../../rendering/fabric/fabricProjection';
 import { FabricStage, type FabricStageApi } from './FabricStage';
 import { DEFAULT_VIEW_STATE, type ViewState } from './viewState';
 
@@ -113,6 +114,7 @@ export function EditorShell() {
     const id = selection[0];
     return id ? document.scene.nodes[id] : null;
   }, [document.scene.nodes, selection]);
+  const selectedNodeType = selectedNode ? getNodeFabricType(selectedNode) : null;
 
   const patchGraphic = (
     nodeId: NodeId,
@@ -546,7 +548,7 @@ export function EditorShell() {
                             <input
                               className="input"
                               type="number"
-                              value={Math.round(selectedNode.graphic.props.left)}
+                              value={Math.round(readNodeNumberProp(selectedNode, 'left', 0))}
                               onChange={(e) =>
                                 patchGraphic(selectedNode.id, { left: Number(e.currentTarget.value) }, '更新X')
                               }
@@ -558,20 +560,20 @@ export function EditorShell() {
                             <input
                               className="input"
                               type="number"
-                              value={Math.round(selectedNode.graphic.props.top)}
+                              value={Math.round(readNodeNumberProp(selectedNode, 'top', 0))}
                               onChange={(e) =>
                                 patchGraphic(selectedNode.id, { top: Number(e.currentTarget.value) }, '更新Y')
                               }
                             />
                           </div>
 
-                          {selectedNode.graphic.fabricType === 'rect' ? (
+                          {selectedNodeType === 'rect' ? (
                             <>
                               <div className="row">
                                 <div className="label">填充</div>
                                 <input
                                   className="input"
-                                  value={selectedNode.graphic.props.fill}
+                                  value={readNodeStringProp(selectedNode, 'fill')}
                                   onChange={(e) =>
                                     patchGraphic(selectedNode.id, { fill: e.currentTarget.value }, '更新填充')
                                   }
@@ -581,7 +583,7 @@ export function EditorShell() {
                                 <div className="label">描边</div>
                                 <input
                                   className="input"
-                                  value={selectedNode.graphic.props.stroke}
+                                  value={readNodeStringProp(selectedNode, 'stroke')}
                                   onChange={(e) =>
                                     patchGraphic(selectedNode.id, { stroke: e.currentTarget.value }, '更新描边')
                                   }
@@ -590,13 +592,13 @@ export function EditorShell() {
                             </>
                           ) : null}
 
-                          {selectedNode.graphic.fabricType === 'textbox' ? (
+                          {selectedNodeType === 'textbox' || selectedNodeType === 'text' ? (
                             <>
                               <div className="row">
                                 <div className="label">文本</div>
                                 <textarea
                                   className="input"
-                                  value={selectedNode.graphic.props.text}
+                                  value={readNodeStringProp(selectedNode, 'text')}
                                   rows={3}
                                   onChange={(e) =>
                                     patchGraphic(selectedNode.id, { text: e.currentTarget.value }, '更新文本')
@@ -608,7 +610,7 @@ export function EditorShell() {
                                 <input
                                   className="input"
                                   type="number"
-                                  value={selectedNode.graphic.props.fontSize}
+                                  value={readNodeNumberProp(selectedNode, 'fontSize', 24)}
                                   onChange={(e) =>
                                     patchGraphic(selectedNode.id, { fontSize: Number(e.currentTarget.value) }, '更新字号')
                                   }

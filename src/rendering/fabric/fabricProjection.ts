@@ -1,5 +1,9 @@
 import { Path, Rect, Textbox, type FabricObject } from "fabric";
-import type { EditorNode, NodeId } from "../../layers/data/types";
+import type {
+  EditorNode,
+  NodeId,
+  SerializedFabricObject,
+} from "../../layers/data/types";
 import type { ViewState } from "../../layers/view/viewState";
 
 export function ensureNumber(value: unknown, fallback: number) {
@@ -9,6 +13,8 @@ export function ensureNumber(value: unknown, fallback: number) {
 const NODE_ID_KEY = "__editorNodeId";
 
 type ObjectWithCustom = FabricObject & Record<string, unknown>;
+type MutableSerializedFabricObject = SerializedFabricObject &
+  Record<string, unknown>;
 
 export function setObjectNodeId(obj: FabricObject, nodeId: NodeId) {
   (obj as ObjectWithCustom)[NODE_ID_KEY] = nodeId;
@@ -74,6 +80,66 @@ export function readNormalizedTransformFromObject(obj: FabricObject) {
   return { ...transform, left, top };
 }
 
+function toObjectRecord(obj: FabricObject) {
+  try {
+    const toObject = (obj as unknown as { toObject?: unknown }).toObject;
+    if (typeof toObject === "function") {
+      return (
+        obj as unknown as {
+          toObject: () => Record<string, unknown>;
+        }
+      ).toObject();
+    }
+  } catch {
+    // ignore
+  }
+
+  return {};
+}
+
+export function serializeFabricObject(
+  obj: FabricObject,
+  patch?: Record<string, unknown>,
+): SerializedFabricObject {
+  const serialized = {
+    ...toObjectRecord(obj),
+    ...readNormalizedTransformFromObject(obj),
+    ...patch,
+    type: typeof obj.type === "string" ? obj.type : "object",
+    originX: "left",
+    originY: "top",
+  } as MutableSerializedFabricObject;
+
+  if (serialized.type === "path" && serialized.path == null) {
+    const anyObj = obj as unknown as Record<string, unknown>;
+    if (anyObj.path != null) serialized.path = anyObj.path;
+    else if (anyObj._path != null) serialized.path = anyObj._path;
+  }
+
+  return serialized;
+}
+
+export function getNodeFabricType(node: EditorNode) {
+  return node.fabricObject.type;
+}
+
+export function readNodeNumberProp(
+  node: EditorNode,
+  key: keyof SerializedFabricObject,
+  fallback: number,
+) {
+  return ensureNumber(node.fabricObject[key], fallback);
+}
+
+export function readNodeStringProp(
+  node: EditorNode,
+  key: keyof SerializedFabricObject,
+  fallback = "",
+) {
+  const value = node.fabricObject[key];
+  return typeof value === "string" ? value : fallback;
+}
+
 function isNodeVisible(node: EditorNode, viewState: ViewState) {
   if (node.hidden) return false;
 
@@ -92,70 +158,65 @@ export function applyNodeToObject(
   viewState: ViewState,
 ) {
   const visible = isNodeVisible(node, viewState);
+  const { type: _type, ...props } = node.fabricObject;
 
   obj.set({
-    left: node.graphic.props.left,
-    top: node.graphic.props.top,
-    scaleX: node.graphic.props.scaleX,
-    scaleY: node.graphic.props.scaleY,
-    angle: node.graphic.props.angle,
-    opacity: node.graphic.props.opacity,
+    ...props,
     selectable: !node.locked,
     evented: !node.locked,
     visible,
+    originX: "left",
+    originY: "top",
   });
-
-  if (node.graphic.fabricType === "rect" && obj instanceof Rect) {
-    obj.set({
-      width: node.graphic.props.width,
-      height: node.graphic.props.height,
-      fill: node.graphic.props.fill,
-      stroke: node.graphic.props.stroke,
-      strokeWidth: node.graphic.props.strokeWidth,
-      rx: node.graphic.props.rx,
-      ry: node.graphic.props.ry,
-    });
-  }
-
-  if (node.graphic.fabricType === "textbox" && obj instanceof Textbox) {
-    obj.set({
-      text: node.graphic.props.text,
-      fill: node.graphic.props.fill,
-      fontFamily: node.graphic.props.fontFamily,
-      fontSize: node.graphic.props.fontSize,
-      lineHeight: node.graphic.props.lineHeight,
-      textAlign: node.graphic.props.textAlign,
-    });
-  }
-
-  if (node.graphic.fabricType === "path" && obj instanceof Path) {
-    obj.set({
-      stroke: node.graphic.props.stroke,
-      strokeWidth: node.graphic.props.strokeWidth,
-      fill: node.graphic.props.fill,
-    });
-  }
 }
 
 export function createFabricObject(node: EditorNode): FabricObject {
-  if (node.graphic.fabricType === "rect") {
+  const serialized = { ...node.fabricObject } as MutableSerializedFabricObject;
+  // #region debug-point C:create-object
+  fetch("http://127.0.0.1:7777/event", {
+    method: "POST",
+    body: JSON.stringify({
+      sessionId: "fabric-blank-canvas",
+      runId: "pre-fix",
+      hypothesisId: "C",
+      location: "fabricProjection.createFabricObject",
+      msg: "[DEBUG] create fabric object from scene node",
+      data: {
+        nodeId: node.id,
+        nodeName: node.name,
+        type: serialized.type,
+        hasPath: Boolean(serialized.path),
+        left: serialized.left ?? null,
+        top: serialized.top ?? null,
+        width: serialized.width ?? null,
+        height: serialized.height ?? null,
+        textLen:
+          typeof serialized.text === "string" ? serialized.text.length : null,
+      },
+      ts: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+
+  if (serialized.type === "rect") {
     return new Rect({
-      ...node.graphic.props,
+      ...serialized,
       originX: "left",
       originY: "top",
     });
   }
 
-  if (node.graphic.fabricType === "textbox") {
-    return new Textbox(node.graphic.props.text, {
-      ...node.graphic.props,
+  if (serialized.type === "textbox" || serialized.type === "text") {
+    const { path: _path, type: _type, text, ...rest } = serialized;
+    return new Textbox(typeof text === "string" ? text : "", {
+      ...rest,
       originX: "left",
       originY: "top",
-      width: 320,
+      width: ensureNumber(serialized.width, 320),
     });
   }
 
-  const { path, ...rest } = node.graphic.props;
+  const { path, type: _type, ...rest } = serialized;
   return new Path(
     path as never,
     {
@@ -166,28 +227,25 @@ export function createFabricObject(node: EditorNode): FabricObject {
   );
 }
 
-export function createPathNodeFromFabricPath(
-  path: Path,
+export function createNodeFromFabricObject(
+  obj: FabricObject,
   zIndex: number,
+  name: string,
 ): EditorNode {
-  const transform = readNormalizedTransformFromObject(path);
-
   return {
     id: crypto.randomUUID(),
-    name: "未标记曲线",
+    name,
     locked: false,
     hidden: false,
     zIndex,
     business: { type: "未标记" },
-    graphic: {
-      fabricType: "path",
-      props: {
-        ...transform,
-        path: (path as unknown as { path?: unknown }).path ?? null,
-        stroke: typeof path.stroke === "string" ? path.stroke : "#111827",
-        strokeWidth: ensureNumber(path.strokeWidth, 2),
-        fill: typeof path.fill === "string" ? path.fill : null,
-      },
-    },
+    fabricObject: serializeFabricObject(obj),
   };
+}
+
+export function createPathNodeFromFabricPath(
+  path: Path,
+  zIndex: number,
+): EditorNode {
+  return createNodeFromFabricObject(path, zIndex, "未标记曲线");
 }

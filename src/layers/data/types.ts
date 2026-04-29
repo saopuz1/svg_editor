@@ -1,4 +1,4 @@
-/** 唯一节点 ID：对应一个可被选中/变换/序列化的编辑对象（FabricObject <-> EditorNode）。 */
+/** 唯一节点 ID：对应一个可被选中/变换/序列化的编辑对象。 */
 export type NodeId = string;
 
 /** 业务“车线”实体 ID：同一条车线可能由多个节点/标注节点共同表达。 */
@@ -73,66 +73,41 @@ export interface CanvasSpec {
 }
 
 /**
- * 编辑对象的通用变换属性（与 FabricObject 的 transform 对齐）。
- * - left/top: 以对象左上角为基准（本项目创建对象时固定 `originX/Y = 'left/top'`）
+ * scene 中直接保存的 Fabric 风格序列化对象。
+ * 约定：
+ * - 存的是“可 JSON 序列化的对象描述”，不是活的 FabricObject 实例
+ * - 以 Fabric 的字段命名为准，尽量减少中间映射层
  */
-export interface TransformProps {
-  left: number;
-  top: number;
-  scaleX: number;
-  scaleY: number;
-  angle: number;
-  opacity: number;
+export interface SerializedFabricObject {
+  type: string;
+  left?: number;
+  top?: number;
+  width?: number;
+  height?: number;
+  scaleX?: number;
+  scaleY?: number;
+  angle?: number;
+  opacity?: number;
+  fill?: string | null;
+  stroke?: string | null;
+  strokeWidth?: number;
+  rx?: number;
+  ry?: number;
+  text?: string;
+  fontFamily?: string;
+  fontSize?: number;
+  lineHeight?: number;
+  textAlign?: "left" | "center" | "right" | "justify";
+  path?: unknown;
+  originX?: string;
+  originY?: string;
+  [key: string]: unknown;
 }
 
 /**
- * 图形层描述：足够把一个 `EditorNode` 投影为 FabricObject。
- * 注意：
- * - 这里不是完整的 Fabric 类型定义，只保留编辑器需要的稳定子集
- * - `fabricType` 是自定义判别字段（discriminant）
- */
-export type Graphic =
-  | {
-      fabricType: "rect";
-      props: TransformProps & {
-        width: number;
-        height: number;
-        fill: string;
-        stroke: string;
-        strokeWidth: number;
-        rx: number;
-        ry: number;
-      };
-    }
-  | {
-      fabricType: "textbox";
-      props: TransformProps & {
-        text: string;
-        fontFamily: string;
-        fontSize: number;
-        fill: string;
-        lineHeight: number;
-        textAlign: "left" | "center" | "right" | "justify";
-      };
-    }
-  | {
-      fabricType: "path";
-      props: TransformProps & {
-        /**
-         * Fabric Path 的原始路径数据。
-         * 当前作为“可序列化的未知结构”存储，由 `FabricStage` 在创建 `Path` 时回填。
-         */
-        path: unknown;
-        stroke: string;
-        strokeWidth: number;
-        fill: string | null;
-      };
-    };
-
-/**
- * 编辑器节点：一个“业务语义 + 图形表达”的组合体。
+ * 编辑器节点：一个“业务语义 + Fabric 序列化图形”的组合体。
  * - `business`：业务含义（车线/标注/未标记）
- * - `graphic`：渲染含义（rect/textbox/path）
+ * - `fabricObject`：Fabric 风格可序列化对象，作为 scene 的图形真相
  */
 export interface EditorNode {
   id: NodeId;
@@ -141,7 +116,7 @@ export interface EditorNode {
   hidden: boolean;
   zIndex: number;
   business: NodeBusiness;
-  graphic: Graphic;
+  fabricObject: SerializedFabricObject;
 }
 
 /**

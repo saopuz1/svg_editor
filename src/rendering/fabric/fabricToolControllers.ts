@@ -88,6 +88,33 @@ const drawPathToolController: ToolController = {
         path,
         editor.data.getState().scene.order.length,
       );
+      // #region debug-point E:path-created
+      fetch("http://127.0.0.1:7777/event", {
+        method: "POST",
+        body: JSON.stringify({
+          sessionId: "fabric-blank-canvas",
+          runId: "pre-fix",
+          hypothesisId: "E",
+          location: "fabricToolControllers.onPathCreated",
+          msg: "[DEBUG] path created -> node serialized",
+          data: {
+            fabricType: path.type,
+            nodeType: node.fabricObject.type,
+            hasPath: Boolean(node.fabricObject.path),
+            left: node.fabricObject.left ?? null,
+            top: node.fabricObject.top ?? null,
+            stroke: node.fabricObject.stroke ?? null,
+            strokeWidth: node.fabricObject.strokeWidth ?? null,
+          },
+          ts: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
+      if (node.fabricObject.type === "path" && !node.fabricObject.path) {
+        // If we can't extract path data reliably, keep the original Fabric object
+        // instead of removing it and ending up with a "disappearing" stroke.
+        return;
+      }
       canvas.remove(path);
       editor.edit.execute(createCommand("新增节点", { node }), "创建曲线");
     };

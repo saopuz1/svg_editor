@@ -79,13 +79,10 @@ export function registerDefaultCommandHandlers(registry: CommandRegistry) {
       const patch = command.payload.patch;
       const next: EditorNode = {
         ...prev,
-        graphic: {
-          ...prev.graphic,
-          props: {
-            ...prev.graphic.props,
-            ...patch,
-          } as EditorNode["graphic"]["props"],
-        } as EditorNode["graphic"],
+        fabricObject: {
+          ...prev.fabricObject,
+          ...patch,
+        },
       };
 
       return {

@@ -57,6 +57,9 @@ export const FabricStage = forwardRef<
       },
       async importSvg(svg: string) {
         const next = await buildDocumentFromSvgImport(editor.data.getState(), svg);
+        // #region debug-point A:import-result
+        fetch('http://127.0.0.1:7777/event',{method:'POST',body:JSON.stringify({sessionId:'fabric-blank-canvas',runId:'pre-fix',hypothesisId:'A',location:'FabricStage.importSvg',msg:'[DEBUG] svg import built next document',data:{sceneOrderLen:next.scene.order.length,sceneNodeLen:Object.keys(next.scene.nodes).length,firstId:next.scene.order[0] ?? null,firstType:(next.scene.order[0] ? next.scene.nodes[next.scene.order[0]]?.fabricObject.type : null) ?? null,firstLeft:(next.scene.order[0] ? next.scene.nodes[next.scene.order[0]]?.fabricObject.left : null) ?? null,firstTop:(next.scene.order[0] ? next.scene.nodes[next.scene.order[0]]?.fabricObject.top : null) ?? null,svgLen:svg.length},ts:Date.now()})}).catch(()=>{});
+        // #endregion
         editor.edit.execute(createCommand('加载文档', { document: next }), '导入 SVG');
       },
     }),
@@ -100,6 +103,19 @@ export const FabricStage = forwardRef<
     canvas.setDimensions(canvasSize);
     canvas.set({ backgroundColor: document.canvas.backgroundColor });
 
+    // This app currently does not support pan/zoom.
+    // If viewportTransform is changed (e.g. by imported SVG options or Fabric internals),
+    // objects may exist but be outside the visible viewport, appearing as a "white screen".
+    const vt = (canvas as unknown as { viewportTransform?: unknown })
+      .viewportTransform;
+    if (
+      Array.isArray(vt) &&
+      vt.length >= 6 &&
+      (vt[0] !== 1 || vt[1] !== 0 || vt[2] !== 0 || vt[3] !== 1 || vt[4] !== 0 || vt[5] !== 0)
+    ) {
+      canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+    }
+
     const objectMap = objectMapRef.current;
 
     for (const [id, obj] of objectMap.entries()) {
@@ -116,10 +132,12 @@ export const FabricStage = forwardRef<
       const existing = objectMap.get(id);
       if (existing) {
         applyNodeToObject(node, existing, viewState);
+        existing.setCoords();
       } else {
         const obj = createFabricObject(node);
         setObjectNodeId(obj, id);
         applyNodeToObject(node, obj, viewState);
+        obj.setCoords();
         objectMap.set(id, obj);
         canvas.add(obj);
       }
@@ -147,7 +165,15 @@ export const FabricStage = forwardRef<
       }
     }
 
-    canvas.requestRenderAll();
+    // #region debug-point B:render-sync
+    (() => {
+      const objects = canvas.getObjects();
+      const first = objects[0] as (FabricObject & Record<string, unknown>) | undefined;
+      fetch('http://127.0.0.1:7777/event',{method:'POST',body:JSON.stringify({sessionId:'fabric-blank-canvas',runId:'pre-fix',hypothesisId:'B',location:'FabricStage.renderSync',msg:'[DEBUG] fabric stage sync complete',data:{sceneOrderLen:document.scene.order.length,sceneNodeLen:Object.keys(document.scene.nodes).length,objectMapSize:objectMap.size,canvasObjectsLen:objects.length,canvasWidth:canvas.getWidth(),canvasHeight:canvas.getHeight(),activeToolId,firstObject:first ? {type:first.type ?? null,left:first.left ?? null,top:first.top ?? null,width:first.width ?? null,height:first.height ?? null,visible:first.visible ?? null,opacity:first.opacity ?? null,stroke:first.stroke ?? null,fill:first.fill ?? null} : null,viewportTransform:(canvas as unknown as { viewportTransform?: unknown }).viewportTransform ?? null},ts:Date.now()})}).catch(()=>{});
+    })();
+    // #endregion
+    // Force a sync render to avoid cases where RAF scheduling is dropped.
+    canvas.renderAll();
   }, [canvasSize, document, selection, viewState]);
 
   useEffect(() => {

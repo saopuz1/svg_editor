@@ -36,7 +36,7 @@
 
 `EditorNode` 组合了：
 - `business: NodeBusiness`（节点的业务语义；domain 通过 NodeId 关联它）
-- `graphic: Graphic`（在 Fabric 中如何渲染/编辑）
+- `fabricObject: SerializedFabricObject`（直接保存 Fabric 风格的可序列化对象）
 
 其他常用字段：
 - `locked`：在画布层面禁用选中/交互。
@@ -44,7 +44,7 @@
 
 这种拆分让以下能力更自然：
 - 业务处理不依赖 Fabric 实现细节
-- 没有 canvas 的情况下也能导出/加工业务数据
+- 临时预览与持久显示使用同一套图形字段，减少导入/重建时的转换损耗
 
 ## NodeBusiness（业务语义）
 
