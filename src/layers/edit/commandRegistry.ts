@@ -101,6 +101,45 @@ export function registerDefaultCommandHandlers(registry: CommandRegistry) {
   });
 
   registry.register({
+    type: "批量更新图形属性",
+    execute: (state, command, context) => {
+      if (command.payload.patches.length === 0) return state;
+
+      const nextNodes = { ...state.scene.nodes };
+      let changed = false;
+
+      for (const item of command.payload.patches) {
+        const prev = nextNodes[item.nodeId];
+        if (!prev) continue;
+
+        nextNodes[item.nodeId] = {
+          ...prev,
+          fabricObject: {
+            ...prev.fabricObject,
+            ...item.patch,
+          },
+        };
+        changed = true;
+      }
+
+      if (!changed) return state;
+
+      return {
+        ...state,
+        meta: {
+          ...state.meta,
+          updatedAt: context.now,
+          version: state.meta.version + 1,
+        },
+        scene: {
+          ...state.scene,
+          nodes: nextNodes,
+        },
+      };
+    },
+  });
+
+  registry.register({
     type: "设置业务属性",
     execute: (state, command, context) => {
       const prev = state.scene.nodes[command.payload.nodeId];

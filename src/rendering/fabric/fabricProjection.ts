@@ -156,47 +156,38 @@ export function applyNodeToObject(
   node: EditorNode,
   obj: FabricObject,
   viewState: ViewState,
+  options?: { preserveTransform?: boolean },
 ) {
   const visible = isNodeVisible(node, viewState);
   const { type: _type, ...props } = node.fabricObject;
+  const {
+    left: _left,
+    top: _top,
+    scaleX: _scaleX,
+    scaleY: _scaleY,
+    angle: _angle,
+    opacity: _opacity,
+    originX: _originX,
+    originY: _originY,
+    ...nonTransformProps
+  } = props;
 
   obj.set({
-    ...props,
+    ...(options?.preserveTransform ? nonTransformProps : props),
     selectable: !node.locked,
     evented: !node.locked,
     visible,
-    originX: "left",
-    originY: "top",
+    ...(options?.preserveTransform
+      ? null
+      : {
+          originX: "left",
+          originY: "top",
+        }),
   });
 }
 
 export function createFabricObject(node: EditorNode): FabricObject {
   const serialized = { ...node.fabricObject } as MutableSerializedFabricObject;
-  // #region debug-point C:create-object
-  fetch("http://127.0.0.1:7777/event", {
-    method: "POST",
-    body: JSON.stringify({
-      sessionId: "fabric-blank-canvas",
-      runId: "pre-fix",
-      hypothesisId: "C",
-      location: "fabricProjection.createFabricObject",
-      msg: "[DEBUG] create fabric object from scene node",
-      data: {
-        nodeId: node.id,
-        nodeName: node.name,
-        type: serialized.type,
-        hasPath: Boolean(serialized.path),
-        left: serialized.left ?? null,
-        top: serialized.top ?? null,
-        width: serialized.width ?? null,
-        height: serialized.height ?? null,
-        textLen:
-          typeof serialized.text === "string" ? serialized.text.length : null,
-      },
-      ts: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
 
   if (serialized.type === "rect") {
     return new Rect({

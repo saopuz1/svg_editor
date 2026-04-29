@@ -9,6 +9,7 @@ export type CommandType =
   | "新增节点"
   | "删除节点"
   | "更新图形属性"
+  | "批量更新图形属性"
   | "设置业务属性"
   | "更新车线字段"
   | "设置自动修改器"
@@ -20,6 +21,12 @@ export type CommandPayloadMap = {
   更新图形属性: {
     nodeId: NodeId;
     patch: Record<string, unknown>;
+  };
+  批量更新图形属性: {
+    patches: Array<{
+      nodeId: NodeId;
+      patch: Record<string, unknown>;
+    }>;
   };
   设置业务属性: {
     nodeId: NodeId;

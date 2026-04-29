@@ -52,7 +52,6 @@ function useResizableRightPanel(initialWidth: number) {
 function iconForTool(toolId: ToolId) {
   switch (toolId) {
     case 'select-box':
-    case 'select-controls':
       return (
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M7 2l12 11.2-5.8.5 3.3 7.3-2.2.9-3.2-7.4-4.4 4.7z" />
@@ -73,6 +72,18 @@ function iconForTool(toolId: ToolId) {
       return (
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M3 21c0-1.1.9-2 2-2s2 .9 2 2-.9 2-2 2-2-.9-2-2zm14-16c0-1.1.9-2 2-2s2 .9 2 2-.9 2-2 2-2-.9-2-2zM6.6 19.8l10.8-13.6c.4-.5 1.2-.6 1.7-.2.5.4.6 1.2.2 1.7L8.5 21.3c-.4.5-1.2.6-1.7.2-.5-.4-.6-1.2-.2-1.7z" />
+        </svg>
+      );
+    case 'draw-line':
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            d="M5 19L19 5"
+            stroke="currentColor"
+            strokeWidth="2"
+            fill="none"
+            strokeLinecap="round"
+          />
         </svg>
       );
     case 'draw-text':
@@ -99,7 +110,6 @@ export function EditorShell() {
   const [rightTab, setRightTab] = useState<'inspector' | 'rules'>('inspector');
 
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
-  const [toolbarLarge, setToolbarLarge] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
 
   const { width: rightWidth, onMouseDown: onResizeMouseDown } =
@@ -256,7 +266,7 @@ export function EditorShell() {
           </div>
         </MenuDropdown>
 
-        <MenuDropdown label="编辑">
+        <MenuDropdown label="命令">
           <div className="viewTitle">操作</div>
           <div
             className="checkRow"
@@ -314,6 +324,31 @@ export function EditorShell() {
             style={{ opacity: selection.length === 0 ? 0.4 : 1 }}
           >
             删除选中
+          </div>
+
+          <div className="viewTitle" style={{ marginTop: 10 }}>
+            业务命令
+          </div>
+          <div
+            className="checkRow"
+            role="button"
+            onClick={() => commandNotImplemented('提取车线')}
+          >
+            提取车线
+          </div>
+          <div
+            className="checkRow"
+            role="button"
+            onClick={() => commandNotImplemented('标记档位')}
+          >
+            标记档位
+          </div>
+          <div
+            className="checkRow"
+            role="button"
+            onClick={() => commandNotImplemented('标记单双')}
+          >
+            标记单双
           </div>
         </MenuDropdown>
 
@@ -375,19 +410,6 @@ export function EditorShell() {
           <span>选中：{selection.length}</span>
 
           <div className="toolOptionsRight">
-            <div
-              className="menuItem"
-              role="button"
-              tabIndex={0}
-              title={toolbarLarge ? '切换为小图标工具栏' : '切换为放大工具栏（显示名称）'}
-              onClick={() => setToolbarLarge((v) => !v)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') setToolbarLarge((v) => !v);
-              }}
-            >
-              工具栏：{toolbarLarge ? '放大' : '图标'}
-            </div>
-
             <span>
               画布：{document.canvas.width}×{document.canvas.height}
             </span>
@@ -398,65 +420,58 @@ export function EditorShell() {
 
         <div className="mainArea">
           <div
-            className={
-              toolbarCollapsed
-                ? 'toolbar toolbarCollapsed'
-                : toolbarLarge
-                  ? 'toolbar toolbarLarge'
-                  : 'toolbar'
-            }
+            className={toolbarCollapsed ? 'toolbar' : 'toolbar toolbarExpanded'}
           >
-            {!toolbarCollapsed ? (
-              <>
-                <div className="toolGroup">
-                  {tools
-                    .filter((t) => t.type === '选择工具')
-                    .map((tool) => {
-                      const active = tool.id === activeToolId;
-                      return (
-                        <button
-                          key={tool.id}
-                          type="button"
-                          title={`${tool.name} (${tool.shortcut ?? ''})`}
-                          className={active ? 'toolBtn toolBtnActive' : 'toolBtn'}
-                          onClick={() => editor.edit.activateTool(tool.id as ToolId)}
-                        >
-                          {iconForTool(tool.id as ToolId)}
-                          <span className="toolBtnLabel">{tool.toolbarName ?? tool.name}</span>
-                        </button>
-                      );
-                    })}
-                </div>
+            <>
+              <div className="toolGroup">
+                <div className="toolGroupTitle">选择工具</div>
+                {tools
+                  .filter((t) => t.type === '选择工具')
+                  .map((tool) => {
+                    const active = tool.id === activeToolId;
+                    return (
+                      <button
+                        key={tool.id}
+                        type="button"
+                        title={`${tool.name} (${tool.shortcut ?? ''})`}
+                        className={active ? 'toolBtn toolBtnActive' : 'toolBtn'}
+                        onClick={() => editor.edit.activateTool(tool.id as ToolId)}
+                      >
+                        {iconForTool(tool.id as ToolId)}
+                        <span className="toolBtnLabel">{tool.toolbarName ?? tool.name}</span>
+                      </button>
+                    );
+                  })}
+              </div>
 
-                <div className="toolGroup" style={{ borderBottom: 'none' }}>
-                  {tools
-                    .filter((t) => t.type === '绘图工具')
-                    .map((tool) => {
-                      const active = tool.id === activeToolId;
-                      return (
-                        <button
-                          key={tool.id}
-                          type="button"
-                          title={`${tool.name} (${tool.shortcut ?? ''})`}
-                          className={active ? 'toolBtn toolBtnActive' : 'toolBtn'}
-                          onClick={() => editor.edit.activateTool(tool.id as ToolId)}
-                        >
-                          {iconForTool(tool.id as ToolId)}
-                          <span className="toolBtnLabel">{tool.toolbarName ?? tool.name}</span>
-                        </button>
-                      );
-                    })}
-                </div>
-
-              </>
-            ) : null}
+              <div className="toolGroup" style={{ borderBottom: 'none' }}>
+                <div className="toolGroupTitle">绘图工具</div>
+                {tools
+                  .filter((t) => t.type === '绘图工具')
+                  .map((tool) => {
+                    const active = tool.id === activeToolId;
+                    return (
+                      <button
+                        key={tool.id}
+                        type="button"
+                        title={`${tool.name} (${tool.shortcut ?? ''})`}
+                        className={active ? 'toolBtn toolBtnActive' : 'toolBtn'}
+                        onClick={() => editor.edit.activateTool(tool.id as ToolId)}
+                      >
+                        {iconForTool(tool.id as ToolId)}
+                        <span className="toolBtnLabel">{tool.toolbarName ?? tool.name}</span>
+                      </button>
+                    );
+                  })}
+              </div>
+            </>
           </div>
 
           <div className="canvasArea">
             <button
               type="button"
               className="edgeToggleBtn edgeToggleBtnLeft"
-              style={{ left: toolbarCollapsed ? 8 : -14 }}
+              style={{ left: -14 }}
               aria-label={toolbarCollapsed ? '展开工具栏' : '收起工具栏'}
               onClick={() => setToolbarCollapsed((v) => !v)}
             >

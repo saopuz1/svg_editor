@@ -1,4 +1,9 @@
-import { Textbox, type Canvas, type FabricObject } from "fabric";
+import {
+  ActiveSelection,
+  Textbox,
+  type Canvas,
+  type FabricObject,
+} from "fabric";
 import type { Editor } from "../../kernel/createEditor";
 import { createCommand } from "../../layers/edit/commands";
 import type { ToolId } from "../../layers/edit/tools";
@@ -13,6 +18,12 @@ export interface FabricCoreBridgeOptions {
   editor: Editor;
   getLastSelectionKey: () => string;
   setLastSelectionKey: (key: string) => void;
+  /**
+   * When true, selection events from Fabric will be ignored.
+   * This is used to avoid feedback loops when we programmatically
+   * rebuild selections (e.g. recreate ActiveSelection).
+   */
+  isSelectionSyncSuppressed?: () => boolean;
 }
 
 export interface FabricToolBridgeOptions {
@@ -26,8 +37,15 @@ export function bindFabricCoreEvents({
   editor,
   getLastSelectionKey,
   setLastSelectionKey,
+  isSelectionSyncSuppressed,
 }: FabricCoreBridgeOptions) {
+  let internalSuppressSelectionSync = false;
+  let pendingMultiTransformPersist = false;
+  const isSuppressed = () =>
+    internalSuppressSelectionSync || isSelectionSyncSuppressed?.() === true;
+
   const syncSelection = () => {
+    if (isSuppressed()) return;
     const active = canvas.getActiveObjects();
     const ids = active
       .map((obj) => getNodeIdFromObject(obj))
@@ -43,12 +61,56 @@ export function bindFabricCoreEvents({
   const handleObjectModified = (evt: { target?: FabricObject }) => {
     const obj = evt.target;
     if (!obj) return;
+    if (obj instanceof ActiveSelection) {
+      if (pendingMultiTransformPersist) return;
+      pendingMultiTransformPersist = true;
+      const selectedObjects = obj.getObjects().slice();
+
+      window.setTimeout(() => {
+        try {
+          // Apply the selection transform after Fabric finishes the current event cycle.
+          // Doing this synchronously inside object:modified re-enters ActiveSelection logic
+          // and leaves behind a transient selection frame.
+          internalSuppressSelectionSync = true;
+          canvas.discardActiveObject();
+          setLastSelectionKey("");
+          internalSuppressSelectionSync = false;
+
+          const patches = selectedObjects
+            .map((item) => {
+              const nodeId = getNodeIdFromObject(item);
+              if (!nodeId) return null;
+              return { nodeId, patch: readTransformFromObject(item) };
+            })
+            .filter(
+              (
+                item,
+              ): item is {
+                nodeId: NodeId;
+                patch: ReturnType<typeof readTransformFromObject>;
+              } => Boolean(item),
+            );
+
+          if (patches.length === 0) return;
+          editor.edit.execute(
+            createCommand("批量更新图形属性", { patches }),
+            "变换",
+          );
+        } finally {
+          internalSuppressSelectionSync = false;
+          pendingMultiTransformPersist = false;
+        }
+      }, 0);
+      return;
+    }
+
     const nodeId = getNodeIdFromObject(obj);
     if (!nodeId) return;
-
-    const patch = readTransformFromObject(obj);
     editor.edit.execute(
-      createCommand("更新图形属性", { nodeId, patch }),
+      createCommand("更新图形属性", {
+        nodeId,
+        patch: readTransformFromObject(obj),
+      }),
       "变换",
     );
   };

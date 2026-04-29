@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { ActiveSelection, Canvas, FabricObject } from 'fabric';
+import { ActiveSelection, Canvas, FabricObject, Shadow } from 'fabric';
 import type { Editor } from '../../kernel/createEditor';
 import {
   bindFabricCoreEvents,
@@ -23,6 +23,50 @@ export interface FabricStageApi {
   importSvg(svg: string): Promise<void>;
 }
 
+const SELECTED_SHADOW = new Shadow({
+  color: 'rgba(37, 99, 235, 0.32)',
+  blur: 18,
+  offsetX: 0,
+  offsetY: 0,
+});
+
+function applySelectionAppearance(obj: FabricObject, selected: boolean) {
+  obj.set({
+    shadow: selected ? SELECTED_SHADOW : null,
+    borderColor: '#2563eb',
+    cornerColor: '#ffffff',
+    cornerStrokeColor: '#2563eb',
+    cornerStyle: 'circle',
+    transparentCorners: false,
+    borderScaleFactor: 1.5,
+    cornerSize: 10,
+    padding: selected ? 8 : 6,
+  });
+}
+
+function applyActiveSelectionAppearance(selection: ActiveSelection) {
+  selection.set({
+    borderColor: '#2563eb',
+    cornerColor: '#ffffff',
+    cornerStrokeColor: '#2563eb',
+    cornerStyle: 'circle',
+    transparentCorners: false,
+    borderScaleFactor: 1.5,
+    cornerSize: 10,
+    padding: 8,
+  });
+}
+
+function getCanvasSelectionIds(canvas: Canvas) {
+  return canvas
+    .getActiveObjects()
+    .map((obj) => {
+      const record = obj as FabricObject & { __editorNodeId?: unknown };
+      return typeof record.__editorNodeId === 'string' ? record.__editorNodeId : null;
+    })
+    .filter((id): id is string => Boolean(id));
+}
+
 export const FabricStage = forwardRef<
   FabricStageApi,
   {
@@ -37,6 +81,7 @@ export const FabricStage = forwardRef<
   const fabricRef = useRef<Canvas | null>(null);
   const objectMapRef = useRef<Map<NodeId, FabricObject>>(new Map());
   const lastSelectionRef = useRef<string>('');
+  const suppressSelectionSyncRef = useRef(false);
   const [ready, setReady] = useState(false);
 
   const canvasSize = useMemo(
@@ -57,9 +102,6 @@ export const FabricStage = forwardRef<
       },
       async importSvg(svg: string) {
         const next = await buildDocumentFromSvgImport(editor.data.getState(), svg);
-        // #region debug-point A:import-result
-        fetch('http://127.0.0.1:7777/event',{method:'POST',body:JSON.stringify({sessionId:'fabric-blank-canvas',runId:'pre-fix',hypothesisId:'A',location:'FabricStage.importSvg',msg:'[DEBUG] svg import built next document',data:{sceneOrderLen:next.scene.order.length,sceneNodeLen:Object.keys(next.scene.nodes).length,firstId:next.scene.order[0] ?? null,firstType:(next.scene.order[0] ? next.scene.nodes[next.scene.order[0]]?.fabricObject.type : null) ?? null,firstLeft:(next.scene.order[0] ? next.scene.nodes[next.scene.order[0]]?.fabricObject.left : null) ?? null,firstTop:(next.scene.order[0] ? next.scene.nodes[next.scene.order[0]]?.fabricObject.top : null) ?? null,svgLen:svg.length},ts:Date.now()})}).catch(()=>{});
-        // #endregion
         editor.edit.execute(createCommand('加载文档', { document: next }), '导入 SVG');
       },
     }),
@@ -73,6 +115,9 @@ export const FabricStage = forwardRef<
       backgroundColor: '#ffffff',
       preserveObjectStacking: true,
       selection: true,
+      selectionColor: 'rgba(37, 99, 235, 0.08)',
+      selectionBorderColor: 'rgba(37, 99, 235, 0.9)',
+      selectionLineWidth: 1.5,
     });
 
     canvas.setDimensions(canvasSize);
@@ -86,6 +131,7 @@ export const FabricStage = forwardRef<
       setLastSelectionKey: (key) => {
         lastSelectionRef.current = key;
       },
+      isSelectionSyncSuppressed: () => suppressSelectionSyncRef.current,
     });
 
     return () => {
@@ -99,6 +145,18 @@ export const FabricStage = forwardRef<
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
+
+    const activeObject = canvas.getActiveObject();
+    const selectionKey = selection.join(',');
+    const canvasSelectionIds = getCanvasSelectionIds(canvas);
+    const canvasSelectionKey = canvasSelectionIds.join(',');
+    const shouldRebuildSelection = selectionKey !== canvasSelectionKey;
+
+    if (shouldRebuildSelection) {
+      suppressSelectionSyncRef.current = true;
+      canvas.discardActiveObject();
+      suppressSelectionSyncRef.current = false;
+    }
 
     canvas.setDimensions(canvasSize);
     canvas.set({ backgroundColor: document.canvas.backgroundColor });
@@ -117,6 +175,7 @@ export const FabricStage = forwardRef<
     }
 
     const objectMap = objectMapRef.current;
+    const selectedIds = new Set(selection);
 
     for (const [id, obj] of objectMap.entries()) {
       if (!document.scene.nodes[id]) {
@@ -131,12 +190,20 @@ export const FabricStage = forwardRef<
 
       const existing = objectMap.get(id);
       if (existing) {
-        applyNodeToObject(node, existing, viewState);
+        const preserveGroupedTransform =
+          selectedIds.has(id) &&
+          activeObject instanceof ActiveSelection &&
+          !shouldRebuildSelection;
+        applyNodeToObject(node, existing, viewState, {
+          preserveTransform: preserveGroupedTransform,
+        });
+        applySelectionAppearance(existing, selectedIds.has(id));
         existing.setCoords();
       } else {
         const obj = createFabricObject(node);
         setObjectNodeId(obj, id);
         applyNodeToObject(node, obj, viewState);
+        applySelectionAppearance(obj, selectedIds.has(id));
         obj.setCoords();
         objectMap.set(id, obj);
         canvas.add(obj);
@@ -149,10 +216,12 @@ export const FabricStage = forwardRef<
       canvas.bringObjectToFront(obj);
     }
 
-    const selectionKey = selection.join(',');
-    if (selectionKey !== lastSelectionRef.current) {
+    const needsSelectionSync =
+      selectionKey !== lastSelectionRef.current || shouldRebuildSelection;
+    if (needsSelectionSync) {
       lastSelectionRef.current = selectionKey;
 
+      suppressSelectionSyncRef.current = true;
       canvas.discardActiveObject();
       const selected = selection
         .map((id) => objectMap.get(id))
@@ -161,17 +230,13 @@ export const FabricStage = forwardRef<
       if (selected.length === 1) {
         canvas.setActiveObject(selected[0]);
       } else if (selected.length > 1) {
-        canvas.setActiveObject(new ActiveSelection(selected, { canvas }));
+        const activeSelection = new ActiveSelection(selected, { canvas });
+        applyActiveSelectionAppearance(activeSelection);
+        canvas.setActiveObject(activeSelection);
       }
+      suppressSelectionSyncRef.current = false;
     }
 
-    // #region debug-point B:render-sync
-    (() => {
-      const objects = canvas.getObjects();
-      const first = objects[0] as (FabricObject & Record<string, unknown>) | undefined;
-      fetch('http://127.0.0.1:7777/event',{method:'POST',body:JSON.stringify({sessionId:'fabric-blank-canvas',runId:'pre-fix',hypothesisId:'B',location:'FabricStage.renderSync',msg:'[DEBUG] fabric stage sync complete',data:{sceneOrderLen:document.scene.order.length,sceneNodeLen:Object.keys(document.scene.nodes).length,objectMapSize:objectMap.size,canvasObjectsLen:objects.length,canvasWidth:canvas.getWidth(),canvasHeight:canvas.getHeight(),activeToolId,firstObject:first ? {type:first.type ?? null,left:first.left ?? null,top:first.top ?? null,width:first.width ?? null,height:first.height ?? null,visible:first.visible ?? null,opacity:first.opacity ?? null,stroke:first.stroke ?? null,fill:first.fill ?? null} : null,viewportTransform:(canvas as unknown as { viewportTransform?: unknown }).viewportTransform ?? null},ts:Date.now()})}).catch(()=>{});
-    })();
-    // #endregion
     // Force a sync render to avoid cases where RAF scheduling is dropped.
     canvas.renderAll();
   }, [canvasSize, document, selection, viewState]);
