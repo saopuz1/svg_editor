@@ -35,7 +35,7 @@ Fabric.js 本质是 **HTML Canvas 的对象模型与交互封装**。
 - 视图：元素/标注显示开关（右上角“视图”）
 - 编辑闭环：Fabric 交互（拖拽/缩放/旋转）会回写到 Data Layer
 - Undo/Redo
-- 导入 SVG（目前仅转换 rect/text 子集）
+- 导入 SVG（支持 rect/text/path/circle/ellipse/line/polyline/polygon，支持展开 group）
 - 导出 SVG / 导出 JSON
 
 ## 本地运行

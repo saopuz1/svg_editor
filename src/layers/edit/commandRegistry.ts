@@ -51,7 +51,7 @@ export function registerDefaultCommandHandlers(registry: CommandRegistry) {
     type: "新增节点",
     execute: (state, command, context) => {
       const node = command.payload.node;
-      const nextOrder = [...state.order, node.id];
+      const nextOrder = [...state.scene.order, node.id];
       const nextNode: EditorNode = { ...node, zIndex: nextOrder.length - 1 };
 
       return {
@@ -61,8 +61,11 @@ export function registerDefaultCommandHandlers(registry: CommandRegistry) {
           updatedAt: context.now,
           version: state.meta.version + 1,
         },
-        nodes: { ...state.nodes, [node.id]: nextNode },
-        order: nextOrder,
+        scene: {
+          ...state.scene,
+          nodes: { ...state.scene.nodes, [node.id]: nextNode },
+          order: nextOrder,
+        },
       };
     },
   });
@@ -70,7 +73,7 @@ export function registerDefaultCommandHandlers(registry: CommandRegistry) {
   registry.register({
     type: "更新图形属性",
     execute: (state, command, context) => {
-      const prev = state.nodes[command.payload.nodeId];
+      const prev = state.scene.nodes[command.payload.nodeId];
       if (!prev) return state;
 
       const patch = command.payload.patch;
@@ -92,7 +95,10 @@ export function registerDefaultCommandHandlers(registry: CommandRegistry) {
           updatedAt: context.now,
           version: state.meta.version + 1,
         },
-        nodes: { ...state.nodes, [prev.id]: next },
+        scene: {
+          ...state.scene,
+          nodes: { ...state.scene.nodes, [prev.id]: next },
+        },
       };
     },
   });
@@ -100,7 +106,7 @@ export function registerDefaultCommandHandlers(registry: CommandRegistry) {
   registry.register({
     type: "设置业务属性",
     execute: (state, command, context) => {
-      const prev = state.nodes[command.payload.nodeId];
+      const prev = state.scene.nodes[command.payload.nodeId];
       if (!prev) return state;
 
       const next: EditorNode = {
@@ -115,7 +121,10 @@ export function registerDefaultCommandHandlers(registry: CommandRegistry) {
           updatedAt: context.now,
           version: state.meta.version + 1,
         },
-        nodes: { ...state.nodes, [prev.id]: next },
+        scene: {
+          ...state.scene,
+          nodes: { ...state.scene.nodes, [prev.id]: next },
+        },
       };
     },
   });
@@ -123,7 +132,7 @@ export function registerDefaultCommandHandlers(registry: CommandRegistry) {
   registry.register({
     type: "更新车线字段",
     execute: (state, command, context) => {
-      const prev = state.nodes[command.payload.nodeId];
+      const prev = state.scene.nodes[command.payload.nodeId];
       if (!prev) return state;
       if (prev.business.type !== "车线") return state;
 
@@ -143,7 +152,10 @@ export function registerDefaultCommandHandlers(registry: CommandRegistry) {
           updatedAt: context.now,
           version: state.meta.version + 1,
         },
-        nodes: { ...state.nodes, [prev.id]: next },
+        scene: {
+          ...state.scene,
+          nodes: { ...state.scene.nodes, [prev.id]: next },
+        },
       };
     },
   });
@@ -157,7 +169,10 @@ export function registerDefaultCommandHandlers(registry: CommandRegistry) {
         updatedAt: context.now,
         version: state.meta.version + 1,
       },
-      autoModifiers: command.payload.autoModifiers,
+      domain: {
+        ...state.domain,
+        自动修改器: command.payload.autoModifiers,
+      },
     }),
   });
 
@@ -165,11 +180,11 @@ export function registerDefaultCommandHandlers(registry: CommandRegistry) {
     type: "删除节点",
     execute: (state, command, context) => {
       const toDelete = new Set(command.payload.nodeIds);
-      const nextNodes = { ...state.nodes };
+      const nextNodes = { ...state.scene.nodes };
       for (const id of toDelete) {
         delete nextNodes[id];
       }
-      const nextOrder = state.order.filter((id) => !toDelete.has(id));
+      const nextOrder = state.scene.order.filter((id) => !toDelete.has(id));
 
       return {
         ...state,
@@ -178,8 +193,11 @@ export function registerDefaultCommandHandlers(registry: CommandRegistry) {
           updatedAt: context.now,
           version: state.meta.version + 1,
         },
-        nodes: nextNodes,
-        order: nextOrder,
+        scene: {
+          ...state.scene,
+          nodes: nextNodes,
+          order: nextOrder,
+        },
       };
     },
   });

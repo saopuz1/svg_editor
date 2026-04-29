@@ -57,25 +57,6 @@ export const FabricStage = forwardRef<
       },
       async importSvg(svg: string) {
         const next = await buildDocumentFromSvgImport(editor.data.getState(), svg);
-        // #region debug-point A:import-svg
-        fetch('http://127.0.0.1:7777/event', {
-          method: 'POST',
-          body: JSON.stringify({
-            sessionId: 'svg-import-draw-blank',
-            runId: 'pre-fix',
-            hypothesisId: 'A',
-            location: 'FabricStage.importSvg',
-            msg: '[DEBUG] importSvg built next document',
-            data: {
-              nextOrderLen: next.order.length,
-              nextNodesLen: Object.keys(next.nodes).length,
-              canvas: next.canvas,
-              svgLen: typeof svg === 'string' ? svg.length : null,
-            },
-            ts: Date.now(),
-          }),
-        }).catch(() => {});
-        // #endregion
         editor.edit.execute(createCommand('加载文档', { document: next }), '导入 SVG');
       },
     }),
@@ -94,24 +75,6 @@ export const FabricStage = forwardRef<
     canvas.setDimensions(canvasSize);
     fabricRef.current = canvas;
     setReady(true);
-    // #region debug-point B:canvas-init
-    fetch('http://127.0.0.1:7777/event', {
-      method: 'POST',
-      body: JSON.stringify({
-        sessionId: 'svg-import-draw-blank',
-        runId: 'pre-fix',
-        hypothesisId: 'B',
-        location: 'FabricStage.useEffect:init',
-        msg: '[DEBUG] fabric canvas initialized',
-        data: {
-          canvasSize,
-          dpr: window.devicePixelRatio,
-          selection: canvas.selection,
-        },
-        ts: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
 
     const unbindCoreEvents = bindFabricCoreEvents({
       canvas,
@@ -134,42 +97,20 @@ export const FabricStage = forwardRef<
     const canvas = fabricRef.current;
     if (!canvas) return;
 
-    // #region debug-point C:render-sync
-    fetch('http://127.0.0.1:7777/event', {
-      method: 'POST',
-      body: JSON.stringify({
-        sessionId: 'svg-import-draw-blank',
-        runId: 'pre-fix',
-        hypothesisId: 'C',
-        location: 'FabricStage.useEffect:sync',
-        msg: '[DEBUG] render sync tick',
-        data: {
-          docOrderLen: document.order.length,
-          docNodesLen: Object.keys(document.nodes).length,
-          selectionLen: selection.length,
-          canvasObjectsLen: canvas.getObjects().length,
-          isDrawingMode: canvas.isDrawingMode,
-          skipTargetFind: canvas.skipTargetFind,
-        },
-        ts: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-
     canvas.setDimensions(canvasSize);
     canvas.set({ backgroundColor: document.canvas.backgroundColor });
 
     const objectMap = objectMapRef.current;
 
     for (const [id, obj] of objectMap.entries()) {
-      if (!document.nodes[id]) {
+      if (!document.scene.nodes[id]) {
         canvas.remove(obj);
         objectMap.delete(id);
       }
     }
 
-    for (const id of document.order) {
-      const node = document.nodes[id];
+    for (const id of document.scene.order) {
+      const node = document.scene.nodes[id];
       if (!node) continue;
 
       const existing = objectMap.get(id);
@@ -184,7 +125,7 @@ export const FabricStage = forwardRef<
       }
     }
 
-    for (const id of document.order) {
+    for (const id of document.scene.order) {
       const obj = objectMap.get(id);
       if (!obj) continue;
       canvas.bringObjectToFront(obj);
@@ -223,5 +164,9 @@ export const FabricStage = forwardRef<
   // ready 仅用于外层展示状态，可保留以避免 lint 报 unused
   void ready;
 
-  return <canvas ref={canvasElRef} className="fabricCanvas" />;
+  return (
+    <div style={{ position: 'relative' }}>
+      <canvas ref={canvasElRef} className="fabricCanvas" />
+    </div>
+  );
 });

@@ -111,8 +111,8 @@ export function EditorShell() {
 
   const selectedNode = useMemo(() => {
     const id = selection[0];
-    return id ? document.nodes[id] : null;
-  }, [document.nodes, selection]);
+    return id ? document.scene.nodes[id] : null;
+  }, [document.scene.nodes, selection]);
 
   const patchGraphic = (
     nodeId: NodeId,
@@ -145,17 +145,17 @@ export function EditorShell() {
       规律: ['D', 'M', 'L'],
       范围: [{ 区域: 'A', 开始: 1, 结束: 10 }],
     };
-    setAutoModifiers([...document.autoModifiers, next]);
+    setAutoModifiers([...document.domain.自动修改器, next]);
   };
 
   const deleteModifier = (id: string) => {
-    setAutoModifiers(document.autoModifiers.filter((m) => m.id !== id));
+    setAutoModifiers(document.domain.自动修改器.filter((m) => m.id !== id));
   };
 
   const moveModifier = (id: string, direction: -1 | 1) => {
-    const idx = document.autoModifiers.findIndex((m) => m.id === id);
+    const idx = document.domain.自动修改器.findIndex((m) => m.id === id);
     if (idx < 0) return;
-    const next = document.autoModifiers.slice();
+    const next = document.domain.自动修改器.slice();
     const target = idx + direction;
     if (target < 0 || target >= next.length) return;
     const [item] = next.splice(idx, 1);
@@ -165,7 +165,7 @@ export function EditorShell() {
 
   const toggleModifierEnabled = (id: string) => {
     setAutoModifiers(
-      document.autoModifiers.map((m) => (m.id === id ? { ...m, 启用: !m.启用 } : m)),
+      document.domain.自动修改器.map((m) => (m.id === id ? { ...m, 启用: !m.启用 } : m)),
     );
   };
 
@@ -746,15 +746,18 @@ export function EditorShell() {
                         + 添加规则
                       </button>
 
-                      {document.autoModifiers.length === 0 ? (
+                      {document.domain.自动修改器.length === 0 ? (
                         <div className="muted" style={{ marginTop: 10 }}>
                           暂无规则
                         </div>
                       ) : (
                         <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                          {document.autoModifiers.map((m) => (
+                          {document.domain.自动修改器.map((m, idx) => {
+                            const id = m.id ?? `idx-${idx}`;
+                            const enabled = m.启用 ?? true;
+                            return (
                             <div
-                              key={m.id}
+                              key={id}
                               style={{
                                 border: '1px solid var(--border)',
                                 borderRadius: 12,
@@ -772,30 +775,31 @@ export function EditorShell() {
                               >
                                 <div>
                                   <div style={{ fontWeight: 800 }}>{m.type}</div>
-                                  <div className="muted">{m.id.slice(0, 8)}</div>
+                                  <div className="muted">{id.slice(0, 8)}</div>
                                 </div>
                                 <label className="checkRow">
                                   <input
                                     type="checkbox"
-                                    checked={m.启用}
-                                    onChange={() => toggleModifierEnabled(m.id)}
+                                    checked={enabled}
+                                    onChange={() => toggleModifierEnabled(id)}
                                   />
                                   启用
                                 </label>
                               </div>
                               <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-                                <button type="button" className="btn" onClick={() => moveModifier(m.id, -1)}>
+                                <button type="button" className="btn" onClick={() => moveModifier(id, -1)}>
                                   上移
                                 </button>
-                                <button type="button" className="btn" onClick={() => moveModifier(m.id, 1)}>
+                                <button type="button" className="btn" onClick={() => moveModifier(id, 1)}>
                                   下移
                                 </button>
-                                <button type="button" className="btn btnDanger" onClick={() => deleteModifier(m.id)}>
+                                <button type="button" className="btn btnDanger" onClick={() => deleteModifier(id)}>
                                   删除
                                 </button>
                               </div>
                             </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </div>

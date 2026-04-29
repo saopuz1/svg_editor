@@ -135,7 +135,7 @@ export class EditLayer {
   }
 
   private filterExistingSelection(selection: NodeId[], state: DocumentState) {
-    return selection.filter((id) => Boolean(state.nodes[id]));
+    return selection.filter((id) => Boolean(state.scene.nodes[id]));
   }
 
   private getNextSelection(command: EditorCommand, nextState: DocumentState) {

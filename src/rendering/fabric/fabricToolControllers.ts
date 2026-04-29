@@ -79,32 +79,6 @@ const drawPathToolController: ToolController = {
     brush.width = 2;
     brush.color = "#111827";
     canvas.freeDrawingBrush = brush;
-    // #region debug-point E:draw-path-activate
-    fetch("http://127.0.0.1:7777/event", {
-      method: "POST",
-      body: JSON.stringify({
-        sessionId: "svg-import-draw-blank",
-        runId: "pre-fix",
-        hypothesisId: "E",
-        location: "fabricToolControllers.drawPath.activate",
-        msg: "[DEBUG] draw-path activated",
-        data: {
-          isDrawingMode: canvas.isDrawingMode,
-          selection: canvas.selection,
-          skipTargetFind: canvas.skipTargetFind,
-          brush: {
-            width:
-              (canvas.freeDrawingBrush as unknown as { width?: unknown })
-                ?.width ?? null,
-            color:
-              (canvas.freeDrawingBrush as unknown as { color?: unknown })
-                ?.color ?? null,
-          },
-        },
-        ts: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
 
     const onPathCreated = (opt: FabricPathCreatedEvent) => {
       const path = opt.path;
@@ -112,43 +86,8 @@ const drawPathToolController: ToolController = {
 
       const node = createPathNodeFromFabricPath(
         path,
-        editor.data.getState().order.length,
+        editor.data.getState().scene.order.length,
       );
-      const pathProps =
-        node.graphic.fabricType === "path" ? node.graphic.props : null;
-      // #region debug-point E:draw-path-created
-      fetch("http://127.0.0.1:7777/event", {
-        method: "POST",
-        body: JSON.stringify({
-          sessionId: "svg-import-draw-blank",
-          runId: "pre-fix",
-          hypothesisId: "E",
-          location: "fabricToolControllers.drawPath.onPathCreated",
-          msg: "[DEBUG] path:created received",
-          data: {
-            fabric: {
-              left: (path as unknown as { left?: unknown }).left ?? null,
-              top: (path as unknown as { top?: unknown }).top ?? null,
-              originX:
-                (path as unknown as { originX?: unknown }).originX ?? null,
-              originY:
-                (path as unknown as { originY?: unknown }).originY ?? null,
-              width: (path as unknown as { width?: unknown }).width ?? null,
-              height: (path as unknown as { height?: unknown }).height ?? null,
-            },
-            node: {
-              left: node.graphic.props.left,
-              top: node.graphic.props.top,
-              scaleX: node.graphic.props.scaleX,
-              scaleY: node.graphic.props.scaleY,
-              stroke: pathProps?.stroke ?? null,
-              strokeWidth: pathProps?.strokeWidth ?? null,
-            },
-          },
-          ts: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
       canvas.remove(path);
       editor.edit.execute(createCommand("新增节点", { node }), "创建曲线");
     };

@@ -41,8 +41,6 @@ React 入口：
 - `EditorContext.tsx`
   - editor 的 React Context Provider
   - 订阅 Data/Edit 状态的 hooks
-- `createEditor.ts`
-  - 兼容旧入口，转发到 `src/kernel/createEditor.ts`
 
 为什么这样做：
 - App 层只负责 React 注入；真正的内核装配已开始迁移到 `src/kernel/`。

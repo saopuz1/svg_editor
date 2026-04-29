@@ -10,22 +10,32 @@
 关键字段：
 - `meta`：文档身份、版本号、时间戳。
 - `canvas`：画布 width/height/backgroundColor（Fabric Canvas 规格）。
-- `nodes`：`Record<NodeId, EditorNode>`，存储全部可编辑实体。
-- `order`：`NodeId[]`，存储渲染/图层顺序。
-- `autoModifiers`：全局规则栈（程序化标注/批处理管线）。
-- `business`：业务域 schema（`MuYinSiSpecDiagram`）。
+- `scene`：编辑器内部可编辑场景（节点 map + 顺序）。
+  - `scene.nodes: Record<NodeId, EditorNode>`
+  - `scene.order: NodeId[]`
+- `svg`：SVG 字符串（与 domain 解耦存储；导入/导出可直接使用）。
+- `domain`：高针图业务数据（不记录布局坐标，只通过 NodeId 与 scene 关联）。
 
 注意：
 - `selection` 已在第一阶段重构中迁移到 `EditState`，不再属于可持久化文档内容。
 
-为什么用 `nodes + order`：
+为什么用 `scene.nodes + scene.order`：
 - map 更新是 O(1)，适合频繁 patch。
 - order 数组提供稳定顺序，不依赖对象 key 插入顺序。
+
+## Domain（高针图业务数据）
+
+`domain` 表示业务侧的“高针图 JSON”，它与 SVG/scene 解耦存储。
+
+关键约束：
+- `domain` 永不为 null：没有对应业务数据时用空数组/空对象表示。
+- `domain` 不记录布局坐标：只通过 `NodeId` 关联到 `scene.nodes`（例如车线的 `标注NodeId`）。
+- `domain.标注样式` 允许是空对象 `{}`（默认值），业务侧可按需逐步补齐字段。
 
 ## EditorNode（业务 + 图形）
 
 `EditorNode` 组合了：
-- `business: NodeBusiness`（业务含义是什么）
+- `business: NodeBusiness`（节点的业务语义；domain 通过 NodeId 关联它）
 - `graphic: Graphic`（在 Fabric 中如何渲染/编辑）
 
 其他常用字段：

@@ -257,8 +257,12 @@ export async function buildDocumentFromSvgImport(
       height: ensureNumber(options.height, baseState.canvas.height),
       backgroundColor: "#ffffff",
     },
-    nodes: Object.fromEntries(importedNodes.map((node) => [node.id, node])),
-    order: importedNodes.map((node) => node.id),
+    svg,
+    scene: {
+      ...baseState.scene,
+      nodes: Object.fromEntries(importedNodes.map((node) => [node.id, node])),
+      order: importedNodes.map((node) => node.id),
+    },
     meta: {
       ...baseState.meta,
       version: baseState.meta.version + 1,

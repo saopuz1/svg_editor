@@ -34,7 +34,6 @@ Kernel 层是 Version C 第一阶段新增的内核入口。
 - `history` 负责装配当前运行时可用的历史管理器。
 - `toolRegistry` 负责装配当前运行时可用的工具控制器。
 - `EditorKernel` 是后续扩展更完整内核门面的承接点。
-- `src/app/createEditor.ts` 目前保留为兼容层，避免一次性修改所有旧 import。
 
 为什么这样做：
 
@@ -47,8 +46,9 @@ Data 层定义并存储“文档状态”（唯一事实来源）：
 
 - `DocumentState` 包含：
   - 画布规格（canvas）
-  - 节点 map + 顺序 order
-  - 业务域数据（如车线/标注/规则栈）
+  - `scene`：节点 map + 顺序（编辑器内部可编辑场景）
+  - `svg`：与 domain 解耦存储的 SVG 字符串（产物/输入）
+  - `domain`：高针图业务数据（仅通过 NodeId 关联，不记录布局坐标）
 
 为什么这样做：
 
@@ -87,7 +87,7 @@ View 层负责渲染 UI，并把 `DocumentState` 投影到：
 关键点：Canvas 不是事实来源。
 
 - 当 Data 变化时：
-  - `FabricStage` 根据 `DocumentState.nodes` 更新/创建/删除 FabricObject
+  - `FabricStage` 根据 `DocumentState.scene.nodes/order` 更新/创建/删除 FabricObject
   - 应用 `ViewState` 的可见性过滤
   - 将 `EditState.selection` 同步为 Fabric 的 active selection
 - 当用户在 Fabric 上交互时：

@@ -22,9 +22,10 @@
 - `EditState` 只存“当前编辑会话中的瞬时状态”
 
 放进 `DocumentState` 的典型内容：
-- 节点、顺序、画布规格
-- 业务数据
-- 自动修改器
+- `canvas`：画布规格
+- `scene`：节点与顺序（编辑器内部可编辑场景）
+- `svg`：SVG 字符串（与 domain 解耦存储）
+- `domain`：高针图业务数据（仅 NodeId 关联，不记录布局坐标；默认永不为 null）
 
 放进 `EditState` 的典型内容：
 - 当前工具
@@ -268,4 +269,3 @@ const yourToolController: ToolController = {
 - 是否让 `FabricStage` 重新变胖
 - 是否更新了对应文档
 - 是否通过诊断和构建
-

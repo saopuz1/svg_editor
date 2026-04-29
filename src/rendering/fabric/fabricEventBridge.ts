@@ -90,23 +90,6 @@ export function bindFabricToolEvents({
   activeToolId,
 }: FabricToolBridgeOptions) {
   const controller = editor.toolRegistry.get(activeToolId);
-  // #region debug-point D:tool-bind
-  fetch("http://127.0.0.1:7777/event", {
-    method: "POST",
-    body: JSON.stringify({
-      sessionId: "svg-import-draw-blank",
-      runId: "pre-fix",
-      hypothesisId: "D",
-      location: "fabricEventBridge.bindFabricToolEvents",
-      msg: "[DEBUG] bindFabricToolEvents",
-      data: {
-        activeToolId,
-        hasController: Boolean(controller),
-      },
-      ts: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
   if (!controller) {
     canvas.defaultCursor = "default";
     canvas.isDrawingMode = false;

@@ -7,6 +7,9 @@ export type CarlineId = string;
 /** 业务字段：D/M/L 三选一。 */
 export type DmlValue = "D" | "M" | "L";
 
+/** 兼容业务命名：D/M/L 三选一。 */
+export type DML值 = DmlValue;
+
 /**
  * 车线的“标注节点”映射。
  * - key 为标注字段名称
@@ -145,46 +148,89 @@ export interface EditorNode {
  * 自动修改器（规则栈）配置：
  * 目前以示例形态存在，承载“程序化标注/自动批处理”的入口。
  */
-export type AutoModifierConfig =
+export type 自动修改器配置 =
   | {
-      id: string;
       type: "按区域自动标注DML";
-      启用: boolean;
       规律: string[];
       范围: { 区域: string; 开始: number; 结束: number }[];
     }
   | {
-      id: string;
       type: "按档位自动标注DML";
-      启用: boolean;
       规律: string[];
       范围: { 档位: string; 开始: number; 结束: number }[];
     };
 
 /**
- * 业务文档（穆吟丝规格图）：
- * - `svg`：原始/导出的 SVG 串（骨架里仅保留字段，具体生成逻辑可后续接入）
- * - `车线`、`标注样式`、`自动修改器`：预留业务域数据
+ * 自动修改器运行时配置（编辑器内部用）：
+ * - 业务 JSON 可以不带 `id/启用`
+ * - 编辑器 UI 为了稳定渲染/开关需要，可在运行时补齐
  */
-export interface MuYinSiSpecDiagram {
-  svg: string;
-  车线: Array<{ id: CarlineId }>;
-  标注样式: Record<string, unknown>;
+export type AutoModifierConfig = 自动修改器配置 & {
+  id?: string;
+  启用?: boolean;
+};
+
+export interface 标注样式 {
+  字体: string;
+  字号: number;
+  字色: string;
+  背景颜色: string;
+  背景形状: "圆形" | "方形";
+  边框颜色: string;
+}
+
+export interface 高针图车线 {
+  id: CarlineId;
+  编号: number;
+  区域: string;
+  尺数: number;
+  档位: string;
+  DML: DML值;
+  是双数: boolean;
+  标注NodeId: AnnotationNodeIdMap;
+}
+
+/**
+ * 业务域数据（高针图 JSON）：与编辑器内部 scene 解耦的保存对象。
+ * 约定：
+ * - 不记录布局坐标（布局属于 scene/svg）
+ * - 通过 NodeId 关联标注文本等可编辑节点
+ */
+export interface 高针图业务数据 {
+  车线: 高针图车线[];
+  标注样式: Partial<{
+    区域编号: 标注样式;
+    档位: 标注样式;
+    单双: 标注样式;
+    DML: 标注样式;
+  }>;
   自动修改器: AutoModifierConfig[];
+}
+
+/** 外部接口需要的组合结构：svg + domain（导出时可组装生成）。 */
+export interface 高针图 extends 高针图业务数据 {
+  svg: string;
+}
+
+/** 编辑器内部场景数据：用于编辑/选中/命令/历史的可编辑模型。 */
+export interface SceneState {
+  nodes: Record<NodeId, EditorNode>;
+  order: NodeId[];
 }
 
 /**
  * Data Layer 的“单一事实来源”状态（Single Source of Truth）。
  * 约定：
- * - `nodes` 存实体，`order` 存渲染/图层顺序，避免在 map 上依赖插入顺序
- * - `autoModifiers` 放在顶层：便于 Edit Layer 做命令化更新 + undo/redo
+ * - `scene`：编辑器内部可编辑场景（布局与图形真相）
+ * - `domain`：业务域数据（高针图），不记录布局坐标，只记录语义与 NodeId 关联
  * - `selection` 已迁移到 Edit Layer，避免把瞬时交互态写入文档真相
  */
 export interface DocumentState {
   meta: DocumentMeta;
   canvas: CanvasSpec;
-  business: MuYinSiSpecDiagram;
-  nodes: Record<NodeId, EditorNode>;
-  order: NodeId[];
-  autoModifiers: AutoModifierConfig[];
+  scene: SceneState;
+  /** 与业务 JSON 分离存储的 SVG 文本（产物字段）。 */
+  svg: string;
+  /** 业务 JSON：永不为 null（无业务数据即空数组/空对象）。 */
+  domain: 高针图业务数据;
 }
