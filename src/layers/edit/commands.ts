@@ -1,0 +1,116 @@
+import type { DocumentState, EditorNode, NodeBusiness, NodeId } from '../data/types';
+
+export type CommandType =
+  | '新增节点'
+  | '删除节点'
+  | '更新图形属性'
+  | '设置业务属性'
+  | '更新车线字段'
+  | '设置自动修改器'
+  | '加载文档';
+
+export type CommandPayloadMap = {
+  新增节点: { node: EditorNode };
+  删除节点: { nodeIds: NodeId[] };
+  更新图形属性: {
+    nodeId: NodeId;
+    patch: Record<string, unknown>;
+  };
+  设置业务属性: {
+    nodeId: NodeId;
+    business: NodeBusiness;
+  };
+  更新车线字段: {
+    nodeId: NodeId;
+    尺数?: number;
+    是双数?: boolean;
+  };
+  设置自动修改器: { autoModifiers: DocumentState['autoModifiers'] };
+  加载文档: { document: DocumentState };
+};
+
+export type EditorCommand = {
+  [TType in CommandType]: {
+    id: string;
+    type: TType;
+    timestamp: number;
+    source: 'user' | 'system';
+    payload: CommandPayloadMap[TType];
+  };
+}[CommandType];
+
+export type TransientAction =
+  | { type: 'SET_SELECTION'; payload: { nodeIds: NodeId[] } };
+
+export function createCommand<TType extends CommandType>(
+  type: TType,
+  payload: CommandPayloadMap[TType],
+  source: EditorCommand['source'] = 'user',
+): Extract<EditorCommand, { type: TType }> {
+  return {
+    id: crypto.randomUUID(),
+    type,
+    timestamp: Date.now(),
+    source,
+    payload,
+  } as Extract<EditorCommand, { type: TType }>;
+}
+
+export function createRectNode(): EditorNode {
+  const id = crypto.randomUUID();
+  return {
+    id,
+    name: '未标记矩形',
+    locked: false,
+    hidden: false,
+    zIndex: 0,
+    business: { type: '未标记' },
+    graphic: {
+      fabricType: 'rect',
+      props: {
+        left: 80,
+        top: 80,
+        width: 180,
+        height: 120,
+        fill: '#ffffff',
+        stroke: '#111111',
+        strokeWidth: 2,
+        rx: 8,
+        ry: 8,
+        scaleX: 1,
+        scaleY: 1,
+        angle: 0,
+        opacity: 1,
+      },
+    },
+  };
+}
+
+export function createTextboxNode(at?: { left: number; top: number }): EditorNode {
+  const id = crypto.randomUUID();
+  return {
+    id,
+    name: '未标记文本',
+    locked: false,
+    hidden: false,
+    zIndex: 0,
+    business: { type: '未标记' },
+    graphic: {
+      fabricType: 'textbox',
+      props: {
+        left: at?.left ?? 140,
+        top: at?.top ?? 120,
+        text: '双击编辑',
+        fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
+        fontSize: 24,
+        fill: '#111111',
+        lineHeight: 1.2,
+        textAlign: 'left',
+        scaleX: 1,
+        scaleY: 1,
+        angle: 0,
+        opacity: 1,
+      },
+    },
+  };
+}

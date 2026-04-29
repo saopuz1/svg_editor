@@ -1,0 +1,518 @@
+/*
+  布局参考：query-1777429290.txt
+  目标：白色主题 + 顶部菜单 + 工具选项栏 + 左侧图标工具栏 + 中央纸张画布 + 右侧 Tabs 面板
+  交互：工具面板/属性面板可收缩
+*/
+
+.editorRoot {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.menubar {
+  height: 38px;
+  background: var(--panel-bg);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.menuItem {
+  cursor: pointer;
+  padding: 5px 10px;
+  border-radius: 8px;
+  color: var(--text);
+}
+
+.menuItem:hover {
+  background: var(--panel-bg-soft);
+}
+
+.menuRight {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.viewPopover {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  width: 220px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: var(--shadow);
+  padding: 10px;
+  z-index: 30;
+}
+
+.viewTitle {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text);
+  margin: 6px 0;
+}
+
+.workspace {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  flex-direction: column;
+}
+
+.toolOptions {
+  height: 34px;
+  background: var(--panel-bg-soft);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.toolOptionsRight {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toolOptionsRight .menuItem {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+.mainArea {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* --- 左侧：工具栏 --- */
+
+.toolbar {
+  width: 52px;
+  background: var(--panel-bg);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 10px;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.toolbarCollapsed {
+  width: 0;
+  padding: 0;
+  border-right: none;
+  overflow: hidden;
+}
+
+.toolbarLarge {
+  width: 170px;
+  align-items: stretch;
+  padding: 10px 8px 0;
+}
+
+.toolbarLarge .toolGroup {
+  align-items: stretch;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+.toolbarLarge .toolBtn {
+  width: 100%;
+  height: 38px;
+  justify-content: flex-start;
+  padding: 0 10px;
+  gap: 10px;
+}
+
+.toolbarLarge .toolBtn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.toolBtnLabel {
+  display: none;
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.toolbarLarge .toolBtnLabel {
+  display: block;
+}
+
+.toolGroup {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.toolBtn {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  color: var(--text);
+  background: transparent;
+  transition: all 0.15s ease;
+}
+
+.toolBtn:hover {
+  background: var(--panel-bg-soft);
+}
+
+.toolBtnActive {
+  background: rgba(0, 122, 204, 0.10);
+  border-color: rgba(0, 122, 204, 0.35);
+  color: var(--accent);
+}
+
+.toolBtn svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+/* --- 中央：画布 --- */
+
+.canvasArea {
+  flex: 1;
+  background: var(--bg);
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: auto;
+  background-image: radial-gradient(rgba(17, 24, 39, 0.10) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+.paper {
+  background: #ffffff;
+  box-shadow: var(--shadow);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  padding: 14px;
+}
+
+.fabricCanvas {
+  display: block;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+}
+
+.floatingHint {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 122, 204, 0.92);
+  color: #ffffff;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-weight: 700;
+  pointer-events: none;
+  display: none;
+  z-index: 10;
+  box-shadow: var(--shadow);
+}
+
+/* --- 右侧：面板（可收缩 + Tabs） --- */
+
+.rightPanel {
+  width: 380px;
+  background: var(--panel-bg);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-width: 0;
+  position: relative;
+}
+
+.rightPanelCollapsed {
+  width: 0 !important;
+  border-left: none;
+  overflow: hidden;
+}
+
+.resizeHandle {
+  position: absolute;
+  left: -5px;
+  top: 0;
+  width: 10px;
+  height: 100%;
+  cursor: col-resize;
+}
+
+.tabsHeader {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-bg);
+}
+
+.tabBtn {
+  flex: 1;
+  padding: 10px 0;
+  text-align: center;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.tabBtn:hover {
+  background: var(--panel-bg-soft);
+  color: var(--text);
+}
+
+.tabBtnActive {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.tabContent {
+  display: none;
+  flex: 1;
+  overflow: hidden;
+}
+
+.tabContentActive {
+  display: flex;
+  flex-direction: column;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border);
+}
+
+.sectionHeader {
+  padding: 8px 12px;
+  background: var(--panel-bg-soft);
+  font-weight: 800;
+  color: var(--text);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.sectionBody {
+  padding: 12px;
+  overflow: auto;
+}
+
+.layerList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.layerItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  cursor: pointer;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+}
+
+.layerItem:hover {
+  background: var(--panel-bg-soft);
+}
+
+.layerItemSelected {
+  border-color: rgba(0, 122, 204, 0.4);
+  background: rgba(0, 122, 204, 0.08);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 66px 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  color: var(--text);
+}
+
+.btn {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  color: var(--text);
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.btn:hover {
+  box-shadow: var(--shadow);
+  transform: translateY(-1px);
+}
+
+.btnPrimary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.btnPrimary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.btnDanger {
+  border-color: rgba(204, 51, 51, 0.35);
+  color: var(--danger);
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  transform: none;
+  box-shadow: none;
+}
+
+.banner {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 13px;
+}
+
+.muted {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.footer {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  border-top: 1px solid var(--border);
+  background: var(--panel-bg);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* 面板收缩时的浮动按钮 */
+
+.floatingToggle {
+  position: absolute;
+  top: 10px;
+  z-index: 20;
+}
+
+.floatingToggleLeft {
+  left: 10px;
+}
+
+.floatingToggleRight {
+  right: 10px;
+}
+
+
+/* 左/右面板边缘居中收起/展开按钮 */
+
+.edgeToggleBtn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: #ffffff;
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 40;
+}
+
+.edgeToggleBtn:hover {
+  border-color: rgba(0, 122, 204, 0.55);
+  color: var(--accent);
+}
+
+.edgeToggleBtn:active {
+  transform: translateY(-50%) scale(0.98);
+}
+
+.edgeToggleBtn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.edgeToggleBtnLeft {
+  /* left 由 inline style 控制 */
+}
+
+.edgeToggleBtnRight {
+  /* right 由 inline style 控制 */
+}
