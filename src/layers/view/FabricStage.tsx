@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { ActiveSelection, Canvas, FabricObject, Shadow } from 'fabric';
+import { ActiveSelection, Canvas, FabricObject, Shadow, StaticCanvas } from 'fabric';
 import type { Editor } from '../../kernel/createEditor';
 import {
   bindFabricCoreEvents,
@@ -7,8 +7,11 @@ import {
 } from '../../rendering/fabric/fabricEventBridge';
 import { buildDocumentFromSvgImport } from '../../rendering/fabric/fabricImportExport';
 import {
-  createFabricObject,
   applyNodeToObject,
+  applyAnnotationBackgroundToTextNode,
+  createAnnotationBackgroundObject,
+  createFabricObject,
+  getAnnotationBackgroundShape,
   setObjectNodeId,
 } from '../../rendering/fabric/fabricProjection';
 import type { DocumentState, NodeId } from '../data/types';
@@ -67,6 +70,60 @@ function getCanvasSelectionIds(canvas: Canvas) {
     .filter((id): id is string => Boolean(id));
 }
 
+function isPanGesture(evt: MouseEvent) {
+  return evt.button === 1 && (evt.ctrlKey || evt.metaKey);
+}
+
+function asMouseEvent(evt: Event | undefined): MouseEvent | null {
+  if (!(evt instanceof MouseEvent)) return null;
+  return evt;
+}
+
+function buildExportSvg(document: DocumentState, viewState: ViewState) {
+  const exportEl = globalThis.document.createElement('canvas');
+  const exportCanvas = new StaticCanvas(exportEl, {
+    backgroundColor: document.canvas.backgroundColor || '#ffffff',
+    preserveObjectStacking: true,
+  });
+
+  exportCanvas.setDimensions({
+    width: document.canvas.width,
+    height: document.canvas.height,
+  });
+
+  for (const id of document.scene.order) {
+    const node = document.scene.nodes[id];
+    if (!node) continue;
+
+    const obj = createFabricObject(node);
+    setObjectNodeId(obj, id);
+    applyNodeToObject(node, obj, viewState, undefined, document.domain.标注样式);
+
+    if (obj.type === 'textbox' || obj.type === 'text') {
+      const shape = getAnnotationBackgroundShape(node, document.domain.标注样式);
+      if (shape) {
+        const background = createAnnotationBackgroundObject(shape, {
+          excludeFromExport: false,
+        });
+        applyAnnotationBackgroundToTextNode(
+          node,
+          obj as never,
+          background,
+          document.domain.标注样式,
+          (obj as FabricObject & { visible?: boolean }).visible !== false,
+        );
+        exportCanvas.add(background);
+      }
+    }
+
+    exportCanvas.add(obj);
+  }
+
+  const svg = exportCanvas.toSVG();
+  exportCanvas.dispose();
+  return svg;
+}
+
 export const FabricStage = forwardRef<
   FabricStageApi,
   {
@@ -80,8 +137,31 @@ export const FabricStage = forwardRef<
   const canvasElRef = useRef<HTMLCanvasElement | null>(null);
   const fabricRef = useRef<Canvas | null>(null);
   const objectMapRef = useRef<Map<NodeId, FabricObject>>(new Map());
+  const backgroundMapRef = useRef<Map<NodeId, FabricObject>>(new Map());
   const lastSelectionRef = useRef<string>('');
   const suppressSelectionSyncRef = useRef(false);
+  const viewportTransformRef = useRef<[number, number, number, number, number, number]>([
+    1, 0, 0, 1, 0, 0,
+  ]);
+  const panningRef = useRef<{
+    active: boolean;
+    lastX: number;
+    lastY: number;
+    selection: boolean;
+    skipTargetFind: boolean;
+    defaultCursor: string;
+    hoverCursor: string | null;
+    moveCursor: string | null;
+  }>({
+    active: false,
+    lastX: 0,
+    lastY: 0,
+    selection: true,
+    skipTargetFind: false,
+    defaultCursor: 'default',
+    hoverCursor: null,
+    moveCursor: null,
+  });
   const [ready, setReady] = useState(false);
 
   const canvasSize = useMemo(
@@ -93,9 +173,7 @@ export const FabricStage = forwardRef<
     ref,
     () => ({
       exportSvg() {
-        const canvas = fabricRef.current;
-        if (!canvas) return '';
-        return canvas.toSVG();
+        return buildExportSvg(document, viewState);
       },
       exportJson() {
         return serializeDocument(editor.data.getState());
@@ -105,7 +183,7 @@ export const FabricStage = forwardRef<
         editor.edit.execute(createCommand('加载文档', { document: next }), '导入 SVG');
       },
     }),
-    [editor],
+    [document, editor, viewState],
   );
 
   useEffect(() => {
@@ -121,6 +199,7 @@ export const FabricStage = forwardRef<
     });
 
     canvas.setDimensions(canvasSize);
+    canvas.setViewportTransform([...viewportTransformRef.current]);
     fabricRef.current = canvas;
     setReady(true);
 
@@ -134,11 +213,95 @@ export const FabricStage = forwardRef<
       isSelectionSyncSuppressed: () => suppressSelectionSyncRef.current,
     });
 
+    const handleMouseDown = (evt: { e?: Event }) => {
+      const nativeEvent = asMouseEvent(evt.e);
+      if (!nativeEvent || !isPanGesture(nativeEvent)) return;
+
+      nativeEvent.preventDefault();
+      nativeEvent.stopPropagation();
+      panningRef.current = {
+        active: true,
+        lastX: nativeEvent.clientX,
+        lastY: nativeEvent.clientY,
+        selection: canvas.selection,
+        skipTargetFind: canvas.skipTargetFind,
+        defaultCursor: canvas.defaultCursor,
+        hoverCursor: canvas.hoverCursor ?? null,
+        moveCursor: canvas.moveCursor ?? null,
+      };
+      canvas.selection = false;
+      canvas.skipTargetFind = true;
+      canvas.defaultCursor = 'grabbing';
+      canvas.hoverCursor = 'grabbing';
+      canvas.moveCursor = 'grabbing';
+      canvas.setCursor('grabbing');
+    };
+
+    const handleMouseMove = (evt: { e?: Event }) => {
+      const nativeEvent = asMouseEvent(evt.e);
+      if (!nativeEvent || !panningRef.current.active) return;
+
+      nativeEvent.preventDefault();
+      nativeEvent.stopPropagation();
+      const dx = nativeEvent.clientX - panningRef.current.lastX;
+      const dy = nativeEvent.clientY - panningRef.current.lastY;
+      panningRef.current.lastX = nativeEvent.clientX;
+      panningRef.current.lastY = nativeEvent.clientY;
+
+      const next = [...viewportTransformRef.current] as [
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+      ];
+      next[4] += dx;
+      next[5] += dy;
+      viewportTransformRef.current = next;
+      canvas.setViewportTransform(next);
+      canvas.requestRenderAll();
+    };
+
+    const stopPanning = () => {
+      if (!panningRef.current.active) return;
+      const previous = panningRef.current;
+      panningRef.current = {
+        ...previous,
+        active: false,
+      };
+      canvas.selection = previous.selection;
+      canvas.skipTargetFind = previous.skipTargetFind;
+      canvas.defaultCursor = previous.defaultCursor;
+      canvas.hoverCursor = previous.hoverCursor ?? previous.defaultCursor;
+      canvas.moveCursor = previous.moveCursor ?? previous.defaultCursor;
+      canvas.setCursor(previous.defaultCursor);
+    };
+
+    const preventMiddleAutoScroll = (evt: MouseEvent) => {
+      if (!isPanGesture(evt)) return;
+      evt.preventDefault();
+    };
+
+    canvas.on('mouse:down', handleMouseDown);
+    canvas.on('mouse:move', handleMouseMove);
+    canvas.on('mouse:up', stopPanning);
+    window.addEventListener('mouseup', stopPanning);
+    canvas.upperCanvasEl.addEventListener('mousedown', preventMiddleAutoScroll);
+    canvas.upperCanvasEl.addEventListener('auxclick', preventMiddleAutoScroll);
+
     return () => {
+      canvas.off('mouse:down', handleMouseDown);
+      canvas.off('mouse:move', handleMouseMove);
+      canvas.off('mouse:up', stopPanning);
+      window.removeEventListener('mouseup', stopPanning);
+      canvas.upperCanvasEl.removeEventListener('mousedown', preventMiddleAutoScroll);
+      canvas.upperCanvasEl.removeEventListener('auxclick', preventMiddleAutoScroll);
       unbindCoreEvents();
       canvas.dispose();
       fabricRef.current = null;
       objectMapRef.current.clear();
+      backgroundMapRef.current.clear();
     };
   }, [canvasSize, editor]);
 
@@ -160,27 +323,24 @@ export const FabricStage = forwardRef<
 
     canvas.setDimensions(canvasSize);
     canvas.set({ backgroundColor: document.canvas.backgroundColor });
-
-    // This app currently does not support pan/zoom.
-    // If viewportTransform is changed (e.g. by imported SVG options or Fabric internals),
-    // objects may exist but be outside the visible viewport, appearing as a "white screen".
-    const vt = (canvas as unknown as { viewportTransform?: unknown })
-      .viewportTransform;
-    if (
-      Array.isArray(vt) &&
-      vt.length >= 6 &&
-      (vt[0] !== 1 || vt[1] !== 0 || vt[2] !== 0 || vt[3] !== 1 || vt[4] !== 0 || vt[5] !== 0)
-    ) {
-      canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
-    }
+    canvas.setViewportTransform([...viewportTransformRef.current]);
 
     const objectMap = objectMapRef.current;
+    const backgroundMap = backgroundMapRef.current;
     const selectedIds = new Set(selection);
 
     for (const [id, obj] of objectMap.entries()) {
       if (!document.scene.nodes[id]) {
         canvas.remove(obj);
         objectMap.delete(id);
+      }
+    }
+
+    for (const [id, obj] of backgroundMap.entries()) {
+      const node = document.scene.nodes[id];
+      if (!node || (node.fabricObject.type !== 'textbox' && node.fabricObject.type !== 'text')) {
+        canvas.remove(obj);
+        backgroundMap.delete(id);
       }
     }
 
@@ -196,21 +356,76 @@ export const FabricStage = forwardRef<
           !shouldRebuildSelection;
         applyNodeToObject(node, existing, viewState, {
           preserveTransform: preserveGroupedTransform,
-        });
+        }, document.domain.标注样式);
         applySelectionAppearance(existing, selectedIds.has(id));
         existing.setCoords();
       } else {
         const obj = createFabricObject(node);
         setObjectNodeId(obj, id);
-        applyNodeToObject(node, obj, viewState);
+        applyNodeToObject(node, obj, viewState, undefined, document.domain.标注样式);
         applySelectionAppearance(obj, selectedIds.has(id));
         obj.setCoords();
         objectMap.set(id, obj);
         canvas.add(obj);
       }
+
+      const currentObject = objectMap.get(id);
+      if (
+        currentObject?.type === 'textbox' ||
+        currentObject?.type === 'text'
+      ) {
+        const desiredShape = getAnnotationBackgroundShape(
+          node,
+          document.domain.标注样式,
+        );
+        const existingBackground = backgroundMap.get(id);
+
+        if (!desiredShape) {
+          if (existingBackground) {
+            canvas.remove(existingBackground);
+            backgroundMap.delete(id);
+          }
+        } else {
+          const currentType = existingBackground?.type;
+          const matchesShape =
+            (desiredShape === 'rect' && currentType === 'rect') ||
+            (desiredShape === 'ellipse' && currentType === 'ellipse');
+          const background =
+            existingBackground && matchesShape
+              ? existingBackground
+              : createAnnotationBackgroundObject(desiredShape);
+
+          if (!existingBackground || !matchesShape) {
+            if (existingBackground) {
+              canvas.remove(existingBackground);
+            }
+            backgroundMap.set(id, background);
+            canvas.add(background);
+          }
+
+          applyAnnotationBackgroundToTextNode(
+            node,
+            currentObject as never,
+            background,
+            document.domain.标注样式,
+            (currentObject as FabricObject & { visible?: boolean }).visible !== false,
+          );
+          background.setCoords();
+        }
+      } else {
+        const existingBackground = backgroundMap.get(id);
+        if (existingBackground) {
+          canvas.remove(existingBackground);
+          backgroundMap.delete(id);
+        }
+      }
     }
 
     for (const id of document.scene.order) {
+      const background = backgroundMap.get(id);
+      if (background) {
+        canvas.bringObjectToFront(background);
+      }
       const obj = objectMap.get(id);
       if (!obj) continue;
       canvas.bringObjectToFront(obj);
@@ -225,7 +440,10 @@ export const FabricStage = forwardRef<
       canvas.discardActiveObject();
       const selected = selection
         .map((id) => objectMap.get(id))
-        .filter((o): o is FabricObject => Boolean(o));
+        .filter(
+          (o): o is FabricObject =>
+            Boolean(o) && (o as FabricObject & { visible?: boolean }).visible !== false,
+        );
 
       if (selected.length === 1) {
         canvas.setActiveObject(selected[0]);

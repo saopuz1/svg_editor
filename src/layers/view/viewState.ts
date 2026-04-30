@@ -1,9 +1,9 @@
-export interface ElementVisibilityToggle {
-  未标记: boolean;
+export interface LineVisibilityToggle {
+  非车线: boolean;
   车线: boolean;
 }
 
-export interface AnnotationVisibilityToggle {
+export interface AnnotationTextVisibilityToggle {
   车线编号: boolean;
   区域: boolean;
   档位: boolean;
@@ -12,16 +12,16 @@ export interface AnnotationVisibilityToggle {
 }
 
 export interface ViewState {
-  元素: ElementVisibilityToggle;
-  标注: AnnotationVisibilityToggle;
+  线条: LineVisibilityToggle;
+  标注文本: AnnotationTextVisibilityToggle;
 }
 
 export const DEFAULT_VIEW_STATE: ViewState = {
-  元素: {
-    未标记: true,
+  线条: {
+    非车线: true,
     车线: true,
   },
-  标注: {
+  标注文本: {
     车线编号: true,
     区域: true,
     档位: true,

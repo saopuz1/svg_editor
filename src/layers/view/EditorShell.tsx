@@ -1,13 +1,127 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { HexColorPicker } from 'react-colorful';
 import { MenuDropdown } from '../../components/MenuDropdown';
 import { useDocumentState, useEditState, useEditor } from '../../app/EditorContext';
-import type { AnnotationField, AutoModifierConfig, NodeBusiness, NodeId } from '../data/types';
+import type {
+  AnnotationField,
+  AutoModifierConfig,
+  NodeBusiness,
+  NodeId,
+  标注样式,
+} from '../data/types';
+import {
+  DEFAULT_ANNOTATION_BORDER_STYLE,
+  resolveNodeAnnotationStyle,
+} from '../data/annotationStyles';
+import {
+  createBusinessForFabricTypeAndType,
+  getAllowedBusinessTypesForFabricType,
+  isLineLikeNode,
+  isTextLikeNode,
+} from '../data/business';
+import {
+  createNodeIdForBusiness,
+  shouldRegenerateNodeIdOnBusinessChange,
+} from '../data/idRules';
 import { serializeDocument } from '../data/serialization';
 import { createCommand, createRectNode, createTextboxNode } from '../edit/commands';
+import {
+  CANCEL_ACTIVE_DRAWING_EVENT,
+  resolveShortcutAction,
+  shouldIgnoreGlobalShortcutTarget,
+} from '../edit/shortcuts';
 import type { ToolId } from '../edit/tools';
-import { getNodeFabricType, readNodeNumberProp, readNodeStringProp } from '../../rendering/fabric/fabricProjection';
+import { readNodeNumberProp } from '../../rendering/fabric/fabricProjection';
 import { FabricStage, type FabricStageApi } from './FabricStage';
+import {
+  getInspectorSections,
+  type InspectorFieldId,
+} from './inspectorSchema';
 import { DEFAULT_VIEW_STATE, type ViewState } from './viewState';
+
+const ANNOTATION_FIELD_OPTIONS: AnnotationField[] = ['车线编号', '区域', '档位', '单双', 'DML'];
+const FONT_FAMILY_OPTIONS = [
+  {
+    label: '系统默认',
+    value: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
+  },
+  {
+    label: '苹方',
+    value: '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
+  },
+  {
+    label: '微软雅黑',
+    value: '"Microsoft YaHei", "PingFang SC", sans-serif',
+  },
+  {
+    label: '宋体',
+    value: '"SimSun", "Songti SC", serif',
+  },
+  {
+    label: '黑体',
+    value: '"SimHei", "Heiti SC", sans-serif',
+  },
+  {
+    label: '等线',
+    value: '"DengXian", "Microsoft YaHei", sans-serif',
+  },
+  {
+    label: 'Arial',
+    value: 'Arial, sans-serif',
+  },
+  {
+    label: '新罗马',
+    value: '"Times New Roman", serif',
+  },
+  {
+    label: '等宽',
+    value: '"Courier New", monospace',
+  },
+] as const;
+
+function normalizeHexColor(value: string, fallback: string) {
+  return /^#([0-9a-fA-F]{6})$/.test(value) ? value : fallback;
+}
+
+function AnnotationColorField({
+  label,
+  value,
+  fallback,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  fallback: string;
+  onChange: (next: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const normalized = normalizeHexColor(value, fallback);
+
+  return (
+    <div className="row">
+      <div className="label">{label}</div>
+      <div className="colorField">
+        <button
+          type="button"
+          className={`colorTrigger ${open ? 'colorTriggerActive' : ''}`}
+          onClick={() => setOpen((prev) => !prev)}
+        >
+          <span
+            className="colorSwatch"
+            style={{ backgroundColor: normalized }}
+            aria-hidden="true"
+          />
+          <span className="colorValue">{normalized.toUpperCase()}</span>
+        </button>
+        {open ? (
+          <div className="colorPopover">
+            <HexColorPicker color={normalized} onChange={onChange} />
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 function downloadText(filename: string, content: string, mime = 'text/plain') {
   const blob = new Blob([content], { type: mime });
@@ -74,6 +188,18 @@ function iconForTool(toolId: ToolId) {
           <path d="M3 21c0-1.1.9-2 2-2s2 .9 2 2-.9 2-2 2-2-.9-2-2zm14-16c0-1.1.9-2 2-2s2 .9 2 2-.9 2-2 2-2-.9-2-2zM6.6 19.8l10.8-13.6c.4-.5 1.2-.6 1.7-.2.5.4.6 1.2.2 1.7L8.5 21.3c-.4.5-1.2.6-1.7.2-.5-.4-.6-1.2-.2-1.7z" />
         </svg>
       );
+    case 'draw-bezier':
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            d="M5 18c0-1.1.9-2 2-2 1.1 0 2 .9 2 2s-.9 2-2 2c-1.1 0-2-.9-2-2zm10-12c0-1.1.9-2 2-2 1.1 0 2 .9 2 2s-.9 2-2 2c-1.1 0-2-.9-2-2zM7 18Q12 4 17 6"
+            stroke="currentColor"
+            strokeWidth="2"
+            fill="none"
+            strokeLinecap="round"
+          />
+        </svg>
+      );
     case 'draw-line':
       return (
         <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -124,7 +250,10 @@ export function EditorShell() {
     const id = selection[0];
     return id ? document.scene.nodes[id] : null;
   }, [document.scene.nodes, selection]);
-  const selectedNodeType = selectedNode ? getNodeFabricType(selectedNode) : null;
+  const inspectorSections = useMemo(
+    () => (selectedNode ? getInspectorSections(selectedNode) : []),
+    [selectedNode],
+  );
 
   const patchGraphic = (
     nodeId: NodeId,
@@ -134,8 +263,20 @@ export function EditorShell() {
     editor.edit.execute(createCommand('更新图形属性', { nodeId, patch }), label);
   };
 
-  const setBusiness = (nodeId: NodeId, business: NodeBusiness, label: string) => {
-    editor.edit.execute(createCommand('设置业务属性', { nodeId, business }), label);
+  const setBusiness = (
+    nodeId: NodeId,
+    business: NodeBusiness,
+    label: string,
+    nextNodeId?: NodeId,
+  ) => {
+    editor.edit.execute(
+      createCommand('设置业务属性', { nodeId, business, nextNodeId }),
+      label,
+    );
+  };
+
+  const setNodeLocked = (nodeId: NodeId, locked: boolean) => {
+    editor.edit.execute(createCommand('设置节点状态', { nodeId, locked }), locked ? '锁定节点' : '解锁节点');
   };
 
   const updateCarlineFields = (
@@ -143,6 +284,20 @@ export function EditorShell() {
     payload: { 尺数?: number; 是双数?: boolean },
   ) => {
     editor.edit.execute(createCommand('更新车线字段', { nodeId, ...payload }), '更新车线字段');
+  };
+
+  const updateNodeAnnotationStyle = (nodeId: NodeId, style: 标注样式, label: string) => {
+    editor.edit.execute(createCommand('设置节点标注样式', { nodeId, style }), label);
+  };
+
+  const updateSelectedNodeAnnotationStyle = (
+    recipe: (prev: 标注样式) => 标注样式,
+    label: string,
+  ) => {
+    if (!selectedNode) return;
+    if (!isTextLikeNode(selectedNode)) return;
+    const prev = resolveNodeAnnotationStyle(selectedNode, document.domain.标注样式);
+    updateNodeAnnotationStyle(selectedNode.id, recipe(prev), label);
   };
 
   const setAutoModifiers = (mods: AutoModifierConfig[]) => {
@@ -184,6 +339,596 @@ export function EditorShell() {
 
   const commandNotImplemented = (name: string) => {
     window.alert(`${name}：骨架中已预留入口，业务逻辑待接入`);
+  };
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (shouldIgnoreGlobalShortcutTarget(e.target)) return;
+
+      const action = resolveShortcutAction({
+        event: e,
+        tools,
+        selectionCount: selection.length,
+      });
+      if (!action) return;
+
+      e.preventDefault();
+      if (action.type === 'undo') {
+        editor.edit.undo();
+        return;
+      }
+      if (action.type === 'activate-tool') {
+        editor.edit.activateTool(action.toolId);
+        return;
+      }
+      if (action.type === 'delete-selection') {
+        editor.edit.execute(
+          createCommand('删除节点', { nodeIds: selection }),
+          '删除',
+        );
+        return;
+      }
+      if (action.type === 'cancel-active-drawing') {
+        window.dispatchEvent(new Event(CANCEL_ACTIVE_DRAWING_EVENT));
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [editor, selection, tools]);
+
+  const renderReadOnlyField = (fieldId: string, label: string, value: string | number) => (
+    <div className="row rowDisabled" key={fieldId}>
+      <div className="label">{label}</div>
+      <input className="input inputDisabled" value={String(value)} readOnly disabled />
+    </div>
+  );
+
+  const renderToggleField = (
+    fieldId: string,
+    label: string,
+    value: string,
+    options: Array<{
+      value: string;
+      label: string;
+      onClick: () => void;
+    }>,
+  ) => (
+    <div className="row" key={fieldId}>
+      <div className="label">{label}</div>
+      <div className="toggleGroup" role="group" aria-label={label}>
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={`toggleButton ${value === option.value ? 'toggleButtonActive' : ''}`}
+            aria-pressed={value === option.value}
+            onClick={option.onClick}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderInspectorField = (fieldId: InspectorFieldId) => {
+    if (!selectedNode) return null;
+    const resolvedAnnotationStyle = isTextLikeNode(selectedNode)
+      ? resolveNodeAnnotationStyle(selectedNode, document.domain.标注样式)
+      : null;
+
+    if (fieldId === 'id') {
+      return (
+        <div className="row" key={fieldId}>
+          <div className="label">ID</div>
+          <input className="input" value={selectedNode.id} readOnly />
+        </div>
+      );
+    }
+
+    if (fieldId === 'left') {
+      return (
+        <div className="row" key={fieldId}>
+          <div className="label">X</div>
+          <input
+            className="input"
+            type="number"
+            value={Math.round(readNodeNumberProp(selectedNode, 'left', 0))}
+            onChange={(e) =>
+              patchGraphic(selectedNode.id, { left: Number(e.currentTarget.value) }, '更新X')
+            }
+          />
+        </div>
+      );
+    }
+
+    if (fieldId === 'top') {
+      return (
+        <div className="row" key={fieldId}>
+          <div className="label">Y</div>
+          <input
+            className="input"
+            type="number"
+            value={Math.round(readNodeNumberProp(selectedNode, 'top', 0))}
+            onChange={(e) =>
+              patchGraphic(selectedNode.id, { top: Number(e.currentTarget.value) }, '更新Y')
+            }
+          />
+        </div>
+      );
+    }
+
+    if (fieldId === 'locked') {
+      return renderToggleField(fieldId, '锁定', selectedNode.locked ? 'locked' : 'none', [
+        {
+          value: 'none',
+          label: '无',
+          onClick: () => setNodeLocked(selectedNode.id, false),
+        },
+        {
+          value: 'locked',
+          label: '锁定',
+          onClick: () => setNodeLocked(selectedNode.id, true),
+        },
+      ]);
+    }
+
+    if (
+      fieldId === 'annotationStyleFontFamily' &&
+      isTextLikeNode(selectedNode) &&
+      resolvedAnnotationStyle
+    ) {
+      return (
+        <div className="row" key={fieldId}>
+          <div className="label">字体</div>
+          <select
+            className="input"
+            value={resolvedAnnotationStyle.字体}
+            onChange={(e) =>
+              updateSelectedNodeAnnotationStyle(
+                (s) => ({ ...s, 字体: e.currentTarget.value }),
+                '更新标注样式字体',
+              )
+            }
+          >
+            {FONT_FAMILY_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+
+    if (
+      fieldId === 'annotationStyleFontSize' &&
+      isTextLikeNode(selectedNode) &&
+      resolvedAnnotationStyle
+    ) {
+      return (
+        <div className="row" key={fieldId}>
+          <div className="label">字号</div>
+          <input
+            className="input"
+            type="number"
+            value={resolvedAnnotationStyle.字号}
+            onChange={(e) =>
+              updateSelectedNodeAnnotationStyle(
+                (s) => ({ ...s, 字号: Number(e.currentTarget.value) }),
+                '更新标注样式字号',
+              )
+            }
+          />
+        </div>
+      );
+    }
+
+    if (
+      fieldId === 'annotationStyleTextColor' &&
+      isTextLikeNode(selectedNode) &&
+      resolvedAnnotationStyle
+    ) {
+      return (
+        <AnnotationColorField
+          key={fieldId}
+          label="字色"
+          value={resolvedAnnotationStyle.字色}
+          fallback="#111111"
+          onChange={(next) =>
+            updateSelectedNodeAnnotationStyle((s) => ({ ...s, 字色: next }), '更新标注样式字色')
+          }
+        />
+      );
+    }
+
+    if (
+      fieldId === 'annotationStyleHasBorder' &&
+      isTextLikeNode(selectedNode) &&
+      resolvedAnnotationStyle
+    ) {
+      return renderToggleField(
+        fieldId,
+        '边框',
+        resolvedAnnotationStyle.有边框 ? 'visible' : 'hidden',
+        [
+          {
+            value: 'hidden',
+            label: '无',
+            onClick: () =>
+              updateSelectedNodeAnnotationStyle(
+                (s) => ({ ...s, 有边框: undefined }),
+                '更新标注样式边框显示',
+              ),
+          },
+          {
+            value: 'visible',
+            label: '有',
+            onClick: () =>
+              updateSelectedNodeAnnotationStyle((s) => {
+                if (s.有边框) return s;
+                return {
+                  ...s,
+                  有边框: { ...DEFAULT_ANNOTATION_BORDER_STYLE },
+                };
+              }, '更新标注样式边框显示'),
+          },
+        ],
+      );
+    }
+
+    if (
+      fieldId === 'annotationStyleBorderTransparent' &&
+      isTextLikeNode(selectedNode) &&
+      resolvedAnnotationStyle &&
+      resolvedAnnotationStyle.有边框
+    ) {
+      return renderToggleField(
+        fieldId,
+        '背景透明',
+        resolvedAnnotationStyle.有边框.是否透明 ? 'transparent' : 'opaque',
+        [
+          {
+            value: 'opaque',
+            label: '不透明',
+            onClick: () =>
+              updateSelectedNodeAnnotationStyle((s) => {
+                if (!s.有边框) return s;
+                return { ...s, 有边框: { ...s.有边框, 是否透明: false } };
+              }, '更新标注样式背景透明'),
+          },
+          {
+            value: 'transparent',
+            label: '透明',
+            onClick: () =>
+              updateSelectedNodeAnnotationStyle((s) => {
+                if (!s.有边框) return s;
+                return { ...s, 有边框: { ...s.有边框, 是否透明: true } };
+              }, '更新标注样式背景透明'),
+          },
+        ],
+      );
+    }
+
+    if (
+      fieldId === 'annotationStyleBorderBackgroundColor' &&
+      isTextLikeNode(selectedNode) &&
+      resolvedAnnotationStyle &&
+      resolvedAnnotationStyle.有边框
+    ) {
+      return (
+        <AnnotationColorField
+          key={fieldId}
+          label="背景颜色"
+          value={resolvedAnnotationStyle.有边框.背景颜色}
+          fallback="#ffffff"
+          onChange={(next) =>
+            updateSelectedNodeAnnotationStyle((s) => {
+              if (!s.有边框) return s;
+              return { ...s, 有边框: { ...s.有边框, 背景颜色: next } };
+            }, '更新标注样式背景颜色')
+          }
+        />
+      );
+    }
+
+    if (
+      fieldId === 'annotationStyleBorderShape' &&
+      isTextLikeNode(selectedNode) &&
+      resolvedAnnotationStyle &&
+      resolvedAnnotationStyle.有边框
+    ) {
+      return renderToggleField(
+        fieldId,
+        '边框形状',
+        resolvedAnnotationStyle.有边框.边框形状,
+        [
+          {
+            value: '方形',
+            label: '方形',
+            onClick: () =>
+              updateSelectedNodeAnnotationStyle((s) => {
+                if (!s.有边框) return s;
+                return { ...s, 有边框: { ...s.有边框, 边框形状: '方形' } };
+              }, '更新标注样式边框形状'),
+          },
+          {
+            value: '圆形',
+            label: '圆形',
+            onClick: () =>
+              updateSelectedNodeAnnotationStyle((s) => {
+                if (!s.有边框) return s;
+                return { ...s, 有边框: { ...s.有边框, 边框形状: '圆形' } };
+              }, '更新标注样式边框形状'),
+          },
+        ],
+      );
+    }
+
+    if (
+      fieldId === 'annotationStyleBorderColor' &&
+      isTextLikeNode(selectedNode) &&
+      resolvedAnnotationStyle &&
+      resolvedAnnotationStyle.有边框
+    ) {
+      return (
+        <AnnotationColorField
+          key={fieldId}
+          label="边框颜色"
+          value={resolvedAnnotationStyle.有边框.边框颜色}
+          fallback="#111111"
+          onChange={(next) =>
+            updateSelectedNodeAnnotationStyle((s) => {
+              if (!s.有边框) return s;
+              return { ...s, 有边框: { ...s.有边框, 边框颜色: next } };
+            }, '更新标注样式边框颜色')
+          }
+        />
+      );
+    }
+
+    if (fieldId === 'businessType') {
+      const businessTypeOptions = getAllowedBusinessTypesForFabricType(
+        selectedNode.fabricObject.type,
+      );
+      return (
+        <div className="row" key={fieldId}>
+          <div className="label">业务类型</div>
+          <select
+            className="input"
+            value={selectedNode.business.type}
+            onChange={(e) => {
+              const nextType = e.currentTarget.value as NodeBusiness['type'];
+              const provisionalBusiness = createBusinessForFabricTypeAndType(
+                selectedNode.fabricObject.type,
+                nextType,
+                { nodeId: selectedNode.id },
+              );
+              if (!provisionalBusiness) return;
+              const nextNodeId = shouldRegenerateNodeIdOnBusinessChange(
+                selectedNode,
+                provisionalBusiness,
+              )
+                ? createNodeIdForBusiness(
+                    selectedNode.fabricObject.type,
+                    provisionalBusiness,
+                  )
+                : undefined;
+              const business = createBusinessForFabricTypeAndType(
+                selectedNode.fabricObject.type,
+                nextType,
+                { nodeId: nextNodeId ?? selectedNode.id },
+              );
+              if (!business) return;
+              setBusiness(selectedNode.id, business, `设为${nextType}`, nextNodeId);
+            }}
+          >
+            {businessTypeOptions.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+
+    if (
+      fieldId === 'carlineId' &&
+      isLineLikeNode(selectedNode) &&
+      selectedNode.business.type === '车线'
+    ) {
+      return renderReadOnlyField(fieldId, '车线ID', selectedNode.business.id);
+    }
+
+    if (
+      fieldId === 'carlineNumber' &&
+      isLineLikeNode(selectedNode) &&
+      selectedNode.business.type === '车线'
+    ) {
+      return renderReadOnlyField(fieldId, '编号', selectedNode.business.编号);
+    }
+
+    if (
+      fieldId === 'carlineArea' &&
+      isLineLikeNode(selectedNode) &&
+      selectedNode.business.type === '车线'
+    ) {
+      return renderReadOnlyField(fieldId, '区域', selectedNode.business.区域);
+    }
+
+    if (
+      fieldId === 'carlineCode' &&
+      isLineLikeNode(selectedNode) &&
+      selectedNode.business.type === '车线'
+    ) {
+      return renderReadOnlyField(fieldId, '车线编号', selectedNode.business.车线编号);
+    }
+
+    if (
+      fieldId === 'carlineSize' &&
+      isLineLikeNode(selectedNode) &&
+      selectedNode.business.type === '车线'
+    ) {
+      return (
+        <div className="row" key={fieldId}>
+          <div className="label">尺数</div>
+          <input
+            className="input"
+            type="number"
+            value={selectedNode.business.尺数}
+            onChange={(e) =>
+              updateCarlineFields(selectedNode.id, {
+                尺数: Number(e.currentTarget.value),
+              })
+            }
+          />
+        </div>
+      );
+    }
+
+    if (
+      fieldId === 'carlineGear' &&
+      isLineLikeNode(selectedNode) &&
+      selectedNode.business.type === '车线'
+    ) {
+      return renderReadOnlyField(fieldId, '档位', selectedNode.business.档位);
+    }
+
+    if (
+      fieldId === 'carlineDml' &&
+      isLineLikeNode(selectedNode) &&
+      selectedNode.business.type === '车线'
+    ) {
+      return renderReadOnlyField(fieldId, 'DML', selectedNode.business.DML);
+    }
+
+    if (
+      fieldId === 'carlineIsEven' &&
+      isLineLikeNode(selectedNode) &&
+      selectedNode.business.type === '车线'
+    ) {
+      return renderToggleField(fieldId, '单双', selectedNode.business.是双数 ? 'double' : 'single', [
+        {
+          value: 'single',
+          label: '单',
+          onClick: () =>
+            updateCarlineFields(selectedNode.id, {
+              是双数: false,
+            }),
+        },
+        {
+          value: 'double',
+          label: '双',
+          onClick: () =>
+            updateCarlineFields(selectedNode.id, {
+              是双数: true,
+            }),
+        },
+      ]);
+    }
+
+    if (
+      fieldId === 'carlineAnnotationNodeIds' &&
+      isLineLikeNode(selectedNode) &&
+      selectedNode.business.type === '车线'
+    ) {
+      return (
+        <details className="inspectorFold" key={fieldId}>
+          <summary className="inspectorFoldSummary">标注NodeId</summary>
+          <div className="inspectorFoldBody">
+            {renderReadOnlyField(
+              `${fieldId}-carline-code`,
+              '车线编号',
+              selectedNode.business.标注NodeId.车线编号,
+            )}
+            {renderReadOnlyField(
+              `${fieldId}-gear`,
+              '档位',
+              selectedNode.business.标注NodeId.档位,
+            )}
+            {renderReadOnlyField(
+              `${fieldId}-odd-even`,
+              '单双',
+              selectedNode.business.标注NodeId.单双,
+            )}
+            {renderReadOnlyField(
+              `${fieldId}-dml`,
+              'DML',
+              selectedNode.business.标注NodeId.DML,
+            )}
+          </div>
+        </details>
+      );
+    }
+
+    if (fieldId === 'annotationField' && selectedNode.business.type === '标注') {
+      const annotationBusiness = selectedNode.business as Extract<
+        NodeBusiness,
+        { type: '标注' }
+      >;
+      return (
+        <div className="row" key={fieldId}>
+          <div className="label">字段</div>
+          <select
+            className="input"
+            value={annotationBusiness.字段}
+            onChange={(e) => {
+              const nextBusiness = {
+                ...annotationBusiness,
+                字段: e.currentTarget.value as AnnotationField,
+              } satisfies Extract<NodeBusiness, { type: '标注' }>;
+              const nextNodeId = shouldRegenerateNodeIdOnBusinessChange(
+                selectedNode,
+                nextBusiness,
+              )
+                ? createNodeIdForBusiness(selectedNode.fabricObject.type, nextBusiness)
+                : undefined;
+              setBusiness(
+                selectedNode.id,
+                nextBusiness,
+                '更新标注字段',
+                nextNodeId,
+              );
+            }}
+          >
+            {ANNOTATION_FIELD_OPTIONS.map((field) => (
+              <option key={field} value={field}>
+                {field}
+              </option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+
+    if (fieldId === 'annotationCarlineId' && selectedNode.business.type === '标注') {
+      const annotationBusiness = selectedNode.business as Extract<
+        NodeBusiness,
+        { type: '标注' }
+      >;
+      return (
+        <div className="row" key={fieldId}>
+          <div className="label">归属车线ID</div>
+          <input
+            className="input"
+            value={annotationBusiness.归属车线Id}
+            onChange={(e) =>
+              setBusiness(
+                selectedNode.id,
+                { ...annotationBusiness, 归属车线Id: e.currentTarget.value },
+                '更新归属车线ID',
+              )
+            }
+          />
+        </div>
+      );
+    }
+
+    return null;
   };
 
   return (
@@ -353,48 +1098,51 @@ export function EditorShell() {
         </MenuDropdown>
 
         <MenuDropdown label="视图">
-          <div className="viewTitle">元素显示</div>
+          <div className="viewTitle">线条显示</div>
           <label className="checkRow">
             <input
               type="checkbox"
-              checked={viewState.元素.未标记}
-              onChange={(e) =>
+              checked={viewState.线条.非车线}
+              onChange={(e) => {
+                const checked = e.currentTarget.checked;
                 setViewState((s) => ({
                   ...s,
-                  元素: { ...s.元素, 未标记: e.currentTarget.checked },
-                }))
-              }
+                  线条: { ...s.线条, 非车线: checked },
+                }));
+              }}
             />
-            未标记
+            非车线
           </label>
           <label className="checkRow">
             <input
               type="checkbox"
-              checked={viewState.元素.车线}
-              onChange={(e) =>
+              checked={viewState.线条.车线}
+              onChange={(e) => {
+                const checked = e.currentTarget.checked;
                 setViewState((s) => ({
                   ...s,
-                  元素: { ...s.元素, 车线: e.currentTarget.checked },
-                }))
-              }
+                  线条: { ...s.线条, 车线: checked },
+                }));
+              }}
             />
             车线
           </label>
 
           <div className="viewTitle" style={{ marginTop: 10 }}>
-            标注显示
+            标注文本显示
           </div>
           {(['车线编号', '区域', '档位', '单双', 'DML'] as const).map((key) => (
             <label className="checkRow" key={key}>
               <input
                 type="checkbox"
-                checked={viewState.标注[key]}
-                onChange={(e) =>
+                checked={viewState.标注文本[key]}
+                onChange={(e) => {
+                  const checked = e.currentTarget.checked;
                   setViewState((s) => ({
                     ...s,
-                    标注: { ...s.标注, [key]: e.currentTarget.checked },
-                  }))
-                }
+                    标注文本: { ...s.标注文本, [key]: checked },
+                  }));
+                }}
               />
               {key}
             </label>
@@ -553,193 +1301,15 @@ export function EditorShell() {
                         </div>
                       ) : (
                         <div className="form">
-                          <div className="row">
-                            <div className="label">ID</div>
-                            <input className="input" value={selectedNode.id} readOnly />
-                          </div>
-
-                          <div className="row">
-                            <div className="label">X</div>
-                            <input
-                              className="input"
-                              type="number"
-                              value={Math.round(readNodeNumberProp(selectedNode, 'left', 0))}
-                              onChange={(e) =>
-                                patchGraphic(selectedNode.id, { left: Number(e.currentTarget.value) }, '更新X')
-                              }
-                            />
-                          </div>
-
-                          <div className="row">
-                            <div className="label">Y</div>
-                            <input
-                              className="input"
-                              type="number"
-                              value={Math.round(readNodeNumberProp(selectedNode, 'top', 0))}
-                              onChange={(e) =>
-                                patchGraphic(selectedNode.id, { top: Number(e.currentTarget.value) }, '更新Y')
-                              }
-                            />
-                          </div>
-
-                          {selectedNodeType === 'rect' ? (
-                            <>
-                              <div className="row">
-                                <div className="label">填充</div>
-                                <input
-                                  className="input"
-                                  value={readNodeStringProp(selectedNode, 'fill')}
-                                  onChange={(e) =>
-                                    patchGraphic(selectedNode.id, { fill: e.currentTarget.value }, '更新填充')
-                                  }
-                                />
-                              </div>
-                              <div className="row">
-                                <div className="label">描边</div>
-                                <input
-                                  className="input"
-                                  value={readNodeStringProp(selectedNode, 'stroke')}
-                                  onChange={(e) =>
-                                    patchGraphic(selectedNode.id, { stroke: e.currentTarget.value }, '更新描边')
-                                  }
-                                />
-                              </div>
-                            </>
-                          ) : null}
-
-                          {selectedNodeType === 'textbox' || selectedNodeType === 'text' ? (
-                            <>
-                              <div className="row">
-                                <div className="label">文本</div>
-                                <textarea
-                                  className="input"
-                                  value={readNodeStringProp(selectedNode, 'text')}
-                                  rows={3}
-                                  onChange={(e) =>
-                                    patchGraphic(selectedNode.id, { text: e.currentTarget.value }, '更新文本')
-                                  }
-                                />
-                              </div>
-                              <div className="row">
-                                <div className="label">字号</div>
-                                <input
-                                  className="input"
-                                  type="number"
-                                  value={readNodeNumberProp(selectedNode, 'fontSize', 24)}
-                                  onChange={(e) =>
-                                    patchGraphic(selectedNode.id, { fontSize: Number(e.currentTarget.value) }, '更新字号')
-                                  }
-                                />
-                              </div>
-                            </>
-                          ) : null}
-
-                          <div className="row" style={{ marginTop: 10 }}>
-                            <div className="label">业务类型</div>
-                            <select
-                              className="input"
-                              value={selectedNode.business.type}
-                              onChange={(e) => {
-                                const nextType = e.currentTarget.value as NodeBusiness['type'];
-                                if (nextType === '未标记') {
-                                  setBusiness(selectedNode.id, { type: '未标记' }, '设为未标记');
-                                  return;
-                                }
-                                if (nextType === '车线') {
-                                  setBusiness(
-                                    selectedNode.id,
-                                    {
-                                      type: '车线',
-                                      id: crypto.randomUUID(),
-                                      编号: 1,
-                                      区域: 'A',
-                                      区域编号: 'A01',
-                                      尺数: 10,
-                                      档位: '1',
-                                      DML: 'M',
-                                      是双数: false,
-                                      标注NodeId: {
-                                        区域编号: crypto.randomUUID(),
-                                        档位: crypto.randomUUID(),
-                                        单双: crypto.randomUUID(),
-                                        DML: crypto.randomUUID(),
-                                      },
-                                    },
-                                    '设为车线',
-                                  );
-                                  return;
-                                }
-                                if (nextType === '标注') {
-                                  setBusiness(
-                                    selectedNode.id,
-                                    { type: '标注', 字段: '区域', 归属车线Id: 'carline' },
-                                    '设为标注',
-                                  );
-                                }
-                              }}
+                          {inspectorSections.map((section, sectionIndex) => (
+                            <div
+                              key={section.id}
+                              style={sectionIndex === 0 ? undefined : { marginTop: 10 }}
                             >
-                              <option value="未标记">未标记</option>
-                              <option value="车线">车线</option>
-                              <option value="标注">标注</option>
-                            </select>
-                          </div>
-
-                          {selectedNode.business.type === '标注' ? (
-                            <div className="row">
-                              <div className="label">字段</div>
-                              <select
-                                className="input"
-                                value={selectedNode.business.字段}
-                                onChange={(e) => {
-                                  const current = selectedNode.business as Extract<
-                                    NodeBusiness,
-                                    { type: '标注' }
-                                  >;
-                                  setBusiness(
-                                    selectedNode.id,
-                                    { ...current, 字段: e.currentTarget.value as AnnotationField },
-                                    '更新标注字段',
-                                  );
-                                }}
-                              >
-                                {(['车线编号', '区域', '档位', '单双', 'DML'] as const).map((f) => (
-                                  <option key={f} value={f}>
-                                    {f}
-                                  </option>
-                                ))}
-                              </select>
+                              <div className="sectionHeader">{section.title}</div>
+                              {section.fields.map((fieldId) => renderInspectorField(fieldId))}
                             </div>
-                          ) : null}
-
-                          {selectedNode.business.type === '车线' ? (
-                            <>
-                              <div className="row">
-                                <div className="label">尺数</div>
-                                <input
-                                  className="input"
-                                  type="number"
-                                  value={selectedNode.business.尺数}
-                                  onChange={(e) =>
-                                    updateCarlineFields(selectedNode.id, {
-                                      尺数: Number(e.currentTarget.value),
-                                    })
-                                  }
-                                />
-                              </div>
-                              <label className="checkRow" style={{ marginTop: 4 }}>
-                                <input
-                                  type="checkbox"
-                                  checked={selectedNode.business.是双数}
-                                  onChange={(e) =>
-                                    updateCarlineFields(selectedNode.id, {
-                                      是双数: e.currentTarget.checked,
-                                    })
-                                  }
-                                />
-                                是双数
-                              </label>
-                            </>
-                          ) : null}
+                          ))}
                         </div>
                       )}
                     </div>

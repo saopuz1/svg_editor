@@ -118,7 +118,11 @@ export function bindFabricCoreEvents({
   const handleTextEditingExited = (evt: { target?: FabricObject }) => {
     const obj = evt.target;
     if (!obj) return;
-    const nodeId = getNodeIdFromObject(obj);
+    const nodeId =
+      getNodeIdFromObject(obj) ??
+      getNodeIdFromObject(
+        (obj as unknown as { group?: unknown }).group as never,
+      );
     if (!nodeId) return;
     if (!(obj instanceof Textbox)) return;
 

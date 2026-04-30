@@ -12,6 +12,7 @@ import type {
   ToolControllerRegistry,
 } from "../../layers/edit/toolController";
 import { createCommand, createTextboxNode } from "../../layers/edit/commands";
+import { CANCEL_ACTIVE_DRAWING_EVENT } from "../../layers/edit/shortcuts";
 import {
   createPathNodeFromFabricPath,
   ensureNumber,
@@ -141,11 +142,21 @@ function distanceBetweenSegments(first: Segment, second: Segment) {
   );
 }
 
-function buildPreviewPolyline(points: Point2D[]) {
+function buildPreviewPolyline(
+  points: Point2D[],
+  options?: {
+    stroke?: string;
+    strokeWidth?: number;
+    strokeDashArray?: number[];
+    opacity?: number;
+  },
+) {
   return new Polyline(points, {
     fill: "",
-    stroke: "#2563eb",
-    strokeWidth: 2,
+    stroke: options?.stroke ?? "#2563eb",
+    strokeWidth: options?.strokeWidth ?? 2,
+    strokeDashArray: options?.strokeDashArray,
+    opacity: options?.opacity ?? 1,
     selectable: false,
     evented: false,
     objectCaching: false,
@@ -738,7 +749,7 @@ const drawLineToolController: ToolController = {
         path,
         editor.data.getState().scene.order.length,
       );
-      node.name = "未标记直线";
+      node.name = "非车线直线";
       editor.edit.execute(createCommand("新增节点", { node }), "创建直线");
     };
     canvas.on("mouse:down", onMouseDown);
@@ -798,6 +809,144 @@ const drawPathToolController: ToolController = {
   },
 };
 
+const drawBezierToolController: ToolController = {
+  id: "draw-bezier",
+  activate({ canvas, editor }: ToolControllerContext) {
+    canvas.defaultCursor = "crosshair";
+    canvas.selection = false;
+    canvas.skipTargetFind = true;
+    canvas.isDrawingMode = false;
+
+    let startPoint: Point2D | null = null;
+    let endPoint: Point2D | null = null;
+    let previewCurve: Polyline | null = null;
+    let previewGuide: Polyline | null = null;
+
+    const removePreview = () => {
+      if (previewGuide) {
+        canvas.remove(previewGuide);
+        previewGuide = null;
+      }
+      if (previewCurve) {
+        canvas.remove(previewCurve);
+        previewCurve = null;
+      }
+      canvas.renderAll();
+    };
+
+    const renderLinePreview = (points: Point2D[]) => {
+      removePreview();
+      if (points.length < 2) return;
+      previewCurve = buildPreviewPolyline(points);
+      canvas.add(previewCurve);
+      canvas.renderAll();
+    };
+
+    const renderQuadraticPreview = (
+      from: Point2D,
+      control: Point2D,
+      to: Point2D,
+    ) => {
+      removePreview();
+      previewGuide = buildPreviewPolyline([from, control, to], {
+        stroke: "#94a3b8",
+        strokeWidth: 1,
+        strokeDashArray: [6, 4],
+        opacity: 0.95,
+      });
+      previewCurve = buildPreviewPolyline([
+        from,
+        ...sampleQuadratic(from, control, to),
+      ]);
+      canvas.add(previewGuide);
+      canvas.add(previewCurve);
+      canvas.renderAll();
+    };
+
+    const resetDrawing = () => {
+      startPoint = null;
+      endPoint = null;
+      removePreview();
+    };
+
+    const onMouseMove = (opt: FabricMouseMoveEvent) => {
+      const pointer = toPoint2D(
+        opt.scenePoint,
+        endPoint ?? startPoint ?? { x: 0, y: 0 },
+      );
+      if (!startPoint) return;
+      if (!endPoint) {
+        renderLinePreview([startPoint, pointer]);
+        return;
+      }
+      renderQuadraticPreview(startPoint, pointer, endPoint);
+    };
+
+    const onMouseDown = (opt: FabricMouseDownEvent) => {
+      const pointer = toPoint2D(opt.scenePoint);
+      if (!startPoint) {
+        startPoint = pointer;
+        renderLinePreview([startPoint, startPoint]);
+        return;
+      }
+
+      if (!endPoint) {
+        if (distanceBetweenPoints(startPoint, pointer) < 2) return;
+        endPoint = pointer;
+        renderLinePreview([startPoint, endPoint]);
+        return;
+      }
+
+      const controlPoint = pointer;
+      const minX = Math.min(startPoint.x, controlPoint.x, endPoint.x);
+      const minY = Math.min(startPoint.y, controlPoint.y, endPoint.y);
+      const pathData = `M ${startPoint.x - minX} ${startPoint.y - minY} Q ${controlPoint.x - minX} ${controlPoint.y - minY} ${endPoint.x - minX} ${endPoint.y - minY}`;
+
+      const path = new Path(
+        pathData as never,
+        {
+          left: minX,
+          top: minY,
+          stroke: "#111827",
+          strokeWidth: 2,
+          fill: null,
+          originX: "left",
+          originY: "top",
+        } as never,
+      );
+
+      const node = createPathNodeFromFabricPath(
+        path,
+        editor.data.getState().scene.order.length,
+      );
+      node.name = "非车线贝塞尔曲线";
+      editor.edit.execute(
+        createCommand("新增节点", { node }),
+        "创建贝塞尔曲线",
+      );
+      resetDrawing();
+    };
+
+    const onCancelDrawing = () => {
+      resetDrawing();
+    };
+
+    canvas.on("mouse:down", onMouseDown);
+    canvas.on("mouse:move", onMouseMove);
+    window.addEventListener(CANCEL_ACTIVE_DRAWING_EVENT, onCancelDrawing);
+
+    return () => {
+      resetDrawing();
+      canvas.off("mouse:down", onMouseDown);
+      canvas.off("mouse:move", onMouseMove);
+      window.removeEventListener(CANCEL_ACTIVE_DRAWING_EVENT, onCancelDrawing);
+      canvas.isDrawingMode = false;
+      canvas.skipTargetFind = false;
+      canvas.selection = true;
+    };
+  },
+};
+
 export function registerDefaultFabricToolControllers(
   registry: ToolControllerRegistry,
 ) {
@@ -806,4 +955,5 @@ export function registerDefaultFabricToolControllers(
   registry.register(drawTextToolController);
   registry.register(drawLineToolController);
   registry.register(drawPathToolController);
+  registry.register(drawBezierToolController);
 }

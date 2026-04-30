@@ -2,11 +2,16 @@ export type ToolId =
   | "select-box"
   | "select-lasso"
   | "draw-path"
+  | "draw-bezier"
   | "draw-line"
   | "draw-text";
 
 export type SelectToolMode = "单选框选" | "划线选择";
-export type DrawToolMode = "创建曲线" | "创建直线" | "创建文本";
+export type DrawToolMode =
+  | "创建曲线"
+  | "创建贝塞尔曲线"
+  | "创建直线"
+  | "创建文本";
 
 export type ToolType = "选择工具" | "绘图工具";
 
@@ -53,6 +58,15 @@ export const DEFAULT_TOOLS: EditorTool[] = [
     cursor: "crosshair",
     shortcut: "P",
     payload: { mode: "创建曲线" },
+  },
+  {
+    id: "draw-bezier",
+    type: "绘图工具",
+    name: "创建贝塞尔曲线",
+    toolbarName: "贝塞尔",
+    cursor: "crosshair",
+    shortcut: "B",
+    payload: { mode: "创建贝塞尔曲线" },
   },
   {
     id: "draw-line",

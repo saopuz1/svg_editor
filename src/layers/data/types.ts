@@ -16,7 +16,7 @@ export type DML值 = DmlValue;
  * - value 为对应标注在编辑器节点树中的 `NodeId`
  */
 export interface AnnotationNodeIdMap {
-  区域编号: NodeId;
+  车线编号: NodeId;
   档位: NodeId;
   单双: NodeId;
   DML: NodeId;
@@ -25,31 +25,44 @@ export interface AnnotationNodeIdMap {
 /** 标注字段枚举：用于标注节点的 `business` 类型。 */
 export type AnnotationField = "车线编号" | "区域" | "档位" | "单双" | "DML";
 
-/**
- * 节点的业务语义（与图形渲染解耦）。
- * - `未标记`：仅作为图形存在，不参与业务逻辑
- * - `车线`：承载业务字段 + 关联的标注节点
- * - `标注`：表示某个字段的文本/图形标注，归属到某条车线
- */
-export type NodeBusiness =
-  | { type: "未标记" }
+/** 通用图形节点：不参与线条/标注业务。 */
+export type GenericNodeBusiness = { type: "普通" };
+
+/** 线条节点：仅允许“非车线 / 车线”。 */
+export type LineNodeBusiness =
+  | { type: "非车线" }
   | {
       type: "车线";
       id: CarlineId;
       编号: number;
       区域: string;
-      区域编号: string;
+      车线编号: string;
       尺数: number;
       档位: string;
       DML: DmlValue;
       是双数: boolean;
       标注NodeId: AnnotationNodeIdMap;
-    }
+    };
+
+/** 文本节点：仅允许“非标注 / 标注”。 */
+export type TextNodeBusiness =
+  | { type: "非标注" }
   | {
       type: "标注";
       字段: AnnotationField;
       归属车线Id: CarlineId;
     };
+
+/**
+ * 节点的业务语义（与图形渲染解耦）。
+ * - `普通`：非业务图形，如矩形等
+ * - `非车线 / 车线`：仅用于线条类节点
+ * - `非标注 / 标注`：仅用于文本类节点
+ */
+export type NodeBusiness =
+  | GenericNodeBusiness
+  | LineNodeBusiness
+  | TextNodeBusiness;
 
 /** 源文件类型：用于记录导入来源（影响兼容/解析策略）。 */
 export type SourceFormat = "unknown" | "svg" | "coreldraw";
@@ -106,7 +119,7 @@ export interface SerializedFabricObject {
 
 /**
  * 编辑器节点：一个“业务语义 + Fabric 序列化图形”的组合体。
- * - `business`：业务含义（车线/标注/未标记）
+ * - `business`：业务含义（普通/车线/标注等）
  * - `fabricObject`：Fabric 风格可序列化对象，作为 scene 的图形真相
  */
 export interface EditorNode {
@@ -117,6 +130,7 @@ export interface EditorNode {
   zIndex: number;
   business: NodeBusiness;
   fabricObject: SerializedFabricObject;
+  appearance?: 节点显示样式;
 }
 
 /**
@@ -145,13 +159,22 @@ export type AutoModifierConfig = 自动修改器配置 & {
   启用?: boolean;
 };
 
+export interface 标注边框样式 {
+  边框形状: "圆形" | "方形";
+  边框颜色: string;
+  背景颜色: string;
+  是否透明: boolean;
+}
+
 export interface 标注样式 {
   字体: string;
   字号: number;
   字色: string;
-  背景颜色: string;
-  背景形状: "圆形" | "方形";
-  边框颜色: string;
+  有边框?: 标注边框样式;
+}
+
+export interface 节点显示样式 {
+  标注样式?: 标注样式;
 }
 
 export interface 高针图车线 {
@@ -174,7 +197,7 @@ export interface 高针图车线 {
 export interface 高针图业务数据 {
   车线: 高针图车线[];
   标注样式: Partial<{
-    区域编号: 标注样式;
+    车线编号: 标注样式;
     档位: 标注样式;
     单双: 标注样式;
     DML: 标注样式;

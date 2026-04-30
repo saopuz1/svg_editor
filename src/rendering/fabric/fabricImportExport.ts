@@ -3,17 +3,22 @@ import {
   Rect,
   Textbox,
   loadSVGFromString,
+  util,
   type FabricObject,
+  type TMat2D,
 } from "fabric";
 import type { DocumentState, EditorNode } from "../../layers/data/types";
 import {
   createNodeFromFabricObject,
   ensureNumber,
+  readNormalizedTransformFromObject,
   serializeFabricObject,
 } from "./fabricProjection";
 
 type ImportedGroup = FabricObject & {
   getObjects?: () => FabricObject[];
+  calcTransformMatrix?: () => TMat2D;
+  group?: unknown;
 };
 
 function asColor(value: unknown, fallback: string | null) {
@@ -22,16 +27,30 @@ function asColor(value: unknown, fallback: string | null) {
 
 function getImportedObjects(
   objects: Array<FabricObject | null>,
+  parentMatrix?: TMat2D,
 ): FabricObject[] {
   const flattened: FabricObject[] = [];
 
   for (const obj of objects) {
     if (!obj) continue;
 
-    const children = (obj as ImportedGroup).getObjects?.();
+    const group = obj as ImportedGroup;
+    const children = group.getObjects?.();
     if (children && children.length > 0) {
-      flattened.push(...getImportedObjects(children));
+      const groupMatrix =
+        typeof group.calcTransformMatrix === "function"
+          ? group.calcTransformMatrix()
+          : parentMatrix;
+      flattened.push(...getImportedObjects(children, groupMatrix));
       continue;
+    }
+
+    if (parentMatrix) {
+      // Flatten group transforms into leaf objects so imported positions match
+      // the original SVG after we discard the group hierarchy.
+      util.sendObjectToPlane(obj, parentMatrix);
+      (obj as ImportedGroup).group = undefined;
+      obj.setCoords();
     }
 
     flattened.push(obj);
@@ -48,6 +67,8 @@ function createPathNodeFromImportedShape(
   offset: { dx: number; dy: number },
 ): EditorNode | null {
   if (!path) return null;
+  const normalized = readNormalizedTransformFromObject(obj);
+  const anyObj = obj as FabricObject & Record<string, unknown>;
 
   const pathObj = new Path(
     path as never,
@@ -55,12 +76,30 @@ function createPathNodeFromImportedShape(
       stroke: asColor(obj.stroke, "#111827") ?? "#111827",
       strokeWidth: ensureNumber(obj.strokeWidth, 2),
       fill: asColor(obj.fill, null),
-      left: ensureNumber(obj.left, 0) + offset.dx,
-      top: ensureNumber(obj.top, 0) + offset.dy,
+      left: normalized.left + offset.dx,
+      top: normalized.top + offset.dy,
       scaleX: ensureNumber(obj.scaleX, 1),
       scaleY: ensureNumber(obj.scaleY, 1),
       angle: ensureNumber(obj.angle, 0),
       opacity: ensureNumber(obj.opacity, 1),
+      skewX: ensureNumber(anyObj.skewX, 0),
+      skewY: ensureNumber(anyObj.skewY, 0),
+      flipX: anyObj.flipX === true,
+      flipY: anyObj.flipY === true,
+      strokeLineCap:
+        typeof anyObj.strokeLineCap === "string"
+          ? anyObj.strokeLineCap
+          : "butt",
+      strokeLineJoin:
+        typeof anyObj.strokeLineJoin === "string"
+          ? anyObj.strokeLineJoin
+          : "miter",
+      strokeMiterLimit: ensureNumber(anyObj.strokeMiterLimit, 4),
+      strokeDashArray: Array.isArray(anyObj.strokeDashArray)
+        ? anyObj.strokeDashArray
+        : null,
+      strokeDashOffset: ensureNumber(anyObj.strokeDashOffset, 0),
+      strokeUniform: anyObj.strokeUniform === true,
       originX: "left",
       originY: "top",
     } as never,

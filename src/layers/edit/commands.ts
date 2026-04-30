@@ -3,14 +3,19 @@ import type {
   EditorNode,
   NodeBusiness,
   NodeId,
+  标注样式,
 } from "../data/types";
+import { createDefaultBusinessForFabricType } from "../data/business";
+import { createNodeIdForBusiness } from "../data/idRules";
 
 export type CommandType =
   | "新增节点"
   | "删除节点"
+  | "设置节点状态"
   | "更新图形属性"
   | "批量更新图形属性"
   | "设置业务属性"
+  | "设置节点标注样式"
   | "更新车线字段"
   | "设置自动修改器"
   | "加载文档";
@@ -18,6 +23,10 @@ export type CommandType =
 export type CommandPayloadMap = {
   新增节点: { node: EditorNode };
   删除节点: { nodeIds: NodeId[] };
+  设置节点状态: {
+    nodeId: NodeId;
+    locked?: boolean;
+  };
   更新图形属性: {
     nodeId: NodeId;
     patch: Record<string, unknown>;
@@ -31,6 +40,11 @@ export type CommandPayloadMap = {
   设置业务属性: {
     nodeId: NodeId;
     business: NodeBusiness;
+    nextNodeId?: NodeId;
+  };
+  设置节点标注样式: {
+    nodeId: NodeId;
+    style: 标注样式;
   };
   更新车线字段: {
     nodeId: NodeId;
@@ -71,14 +85,15 @@ export function createCommand<TType extends CommandType>(
 }
 
 export function createRectNode(): EditorNode {
-  const id = crypto.randomUUID();
+  const business = createDefaultBusinessForFabricType("rect");
+  const id = createNodeIdForBusiness("rect", business);
   return {
     id,
-    name: "未标记矩形",
+    name: "普通矩形",
     locked: false,
     hidden: false,
     zIndex: 0,
-    business: { type: "未标记" },
+    business,
     fabricObject: {
       type: "rect",
       left: 80,
@@ -104,14 +119,15 @@ export function createTextboxNode(at?: {
   left: number;
   top: number;
 }): EditorNode {
-  const id = crypto.randomUUID();
+  const business = createDefaultBusinessForFabricType("textbox");
+  const id = createNodeIdForBusiness("textbox", business);
   return {
     id,
-    name: "未标记文本",
+    name: "非标注文本",
     locked: false,
     hidden: false,
     zIndex: 0,
-    business: { type: "未标记" },
+    business,
     fabricObject: {
       type: "textbox",
       left: at?.left ?? 140,

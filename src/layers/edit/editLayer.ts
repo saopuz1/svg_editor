@@ -151,6 +151,20 @@ export class EditLayer {
           nextState,
         );
       }
+      case "设置业务属性": {
+        if (!command.payload.nextNodeId) {
+          return this.filterExistingSelection(
+            this.editState.selection,
+            nextState,
+          );
+        }
+        return this.filterExistingSelection(
+          this.editState.selection.map((id) =>
+            id === command.payload.nodeId ? command.payload.nextNodeId! : id,
+          ),
+          nextState,
+        );
+      }
       default:
         return this.filterExistingSelection(
           this.editState.selection,

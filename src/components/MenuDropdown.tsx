@@ -28,6 +28,7 @@ export function MenuDropdown({
   return (
     <div ref={rootRef} style={{ position: 'relative' }}>
       <MenuItem
+        className={open ? 'menuTrigger menuTriggerActive' : 'menuTrigger'}
         role="button"
         tabIndex={0}
         onClick={() => setOpen((v) => !v)}

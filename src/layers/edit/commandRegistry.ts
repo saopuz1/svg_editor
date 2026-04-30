@@ -71,6 +71,32 @@ export function registerDefaultCommandHandlers(registry: CommandRegistry) {
   });
 
   registry.register({
+    type: "设置节点状态",
+    execute: (state, command, context) => {
+      const prev = state.scene.nodes[command.payload.nodeId];
+      if (!prev) return state;
+
+      const next: EditorNode = {
+        ...prev,
+        locked: command.payload.locked ?? prev.locked,
+      };
+
+      return {
+        ...state,
+        meta: {
+          ...state.meta,
+          updatedAt: context.now,
+          version: state.meta.version + 1,
+        },
+        scene: {
+          ...state.scene,
+          nodes: { ...state.scene.nodes, [prev.id]: next },
+        },
+      };
+    },
+  });
+
+  registry.register({
     type: "更新图形属性",
     execute: (state, command, context) => {
       const prev = state.scene.nodes[command.payload.nodeId];
@@ -145,9 +171,58 @@ export function registerDefaultCommandHandlers(registry: CommandRegistry) {
       const prev = state.scene.nodes[command.payload.nodeId];
       if (!prev) return state;
 
+      const nextId = command.payload.nextNodeId ?? prev.id;
+      const nextBusiness =
+        command.payload.business.type === "车线"
+          ? {
+              ...command.payload.business,
+              id: nextId,
+            }
+          : command.payload.business;
       const next: EditorNode = {
         ...prev,
-        business: command.payload.business,
+        id: nextId,
+        business: nextBusiness,
+      };
+
+      const nextNodes = { ...state.scene.nodes };
+      if (nextId !== prev.id) {
+        delete nextNodes[prev.id];
+      }
+      nextNodes[nextId] = next;
+      const nextOrder =
+        nextId === prev.id
+          ? state.scene.order
+          : state.scene.order.map((id) => (id === prev.id ? nextId : id));
+
+      return {
+        ...state,
+        meta: {
+          ...state.meta,
+          updatedAt: context.now,
+          version: state.meta.version + 1,
+        },
+        scene: {
+          ...state.scene,
+          nodes: nextNodes,
+          order: nextOrder,
+        },
+      };
+    },
+  });
+
+  registry.register({
+    type: "设置节点标注样式",
+    execute: (state, command, context) => {
+      const prev = state.scene.nodes[command.payload.nodeId];
+      if (!prev) return state;
+
+      const next: EditorNode = {
+        ...prev,
+        appearance: {
+          ...prev.appearance,
+          标注样式: command.payload.style,
+        },
       };
 
       return {

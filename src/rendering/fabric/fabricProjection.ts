@@ -1,9 +1,13 @@
-import { Path, Rect, Textbox, type FabricObject } from "fabric";
+import { Ellipse, Path, Rect, Textbox, type FabricObject } from "fabric";
 import type {
+  DocumentState,
   EditorNode,
   NodeId,
   SerializedFabricObject,
 } from "../../layers/data/types";
+import { resolveNodeAnnotationStyle } from "../../layers/data/annotationStyles";
+import { createDefaultBusinessForFabricType } from "../../layers/data/business";
+import { createNodeIdForBusiness } from "../../layers/data/idRules";
 import type { ViewState } from "../../layers/view/viewState";
 
 export function ensureNumber(value: unknown, fallback: number) {
@@ -36,6 +40,37 @@ export function readTransformFromObject(obj: FabricObject) {
   };
 }
 
+function readObjectPositionByOrigin(
+  obj: FabricObject,
+  originX: "left" | "center" | "right",
+  originY: "top" | "center" | "bottom",
+) {
+  const fn = (
+    obj as unknown as {
+      getPositionByOrigin?: unknown;
+    }
+  ).getPositionByOrigin;
+  if (typeof fn !== "function") return null;
+  try {
+    const point = (
+      obj as unknown as {
+        getPositionByOrigin: (
+          x: "left" | "center" | "right",
+          y: "top" | "center" | "bottom",
+        ) => { x?: unknown; y?: unknown };
+      }
+    ).getPositionByOrigin(originX, originY);
+    const left = ensureNumber(point.x, NaN);
+    const top = ensureNumber(point.y, NaN);
+    if (Number.isFinite(left) && Number.isFinite(top)) {
+      return { left, top };
+    }
+  } catch {
+    // ignore and fall back to width/height approximation
+  }
+  return null;
+}
+
 /**
  * 将 Fabric 对象的变换统一到编辑器内部约定：originX/originY = left/top。
  * - SVG 导入/部分 Fabric 对象的 origin 可能是 center/right/bottom
@@ -43,6 +78,10 @@ export function readTransformFromObject(obj: FabricObject) {
  */
 export function readNormalizedTransformFromObject(obj: FabricObject) {
   const transform = readTransformFromObject(obj);
+  const positioned = readObjectPositionByOrigin(obj, "left", "top");
+  if (positioned) {
+    return { ...transform, left: positioned.left, top: positioned.top };
+  }
 
   const originX = (obj as unknown as { originX?: unknown }).originX;
   const originY = (obj as unknown as { originY?: unknown }).originY;
@@ -143,13 +182,135 @@ export function readNodeStringProp(
 function isNodeVisible(node: EditorNode, viewState: ViewState) {
   if (node.hidden) return false;
 
-  if (node.business.type === "未标记") return viewState.元素.未标记;
-  if (node.business.type === "车线") return viewState.元素.车线;
+  if (node.business.type === "普通" || node.business.type === "非标注") {
+    return true;
+  }
+  if (node.business.type === "非车线") return viewState.线条.非车线;
+  if (node.business.type === "车线") return viewState.线条.车线;
   if (node.business.type === "标注") {
-    return viewState.标注[node.business.字段];
+    return viewState.标注文本[node.business.字段];
   }
 
   return true;
+}
+
+function hasVisibleColor(color: string) {
+  const normalized = color.trim().toLowerCase();
+  return (
+    normalized !== "" &&
+    normalized !== "transparent" &&
+    normalized !== "rgba(0,0,0,0)" &&
+    normalized !== "rgba(0, 0, 0, 0)"
+  );
+}
+
+export function getAnnotationBackgroundShape(
+  node: EditorNode,
+  domainAnnotationStyles: DocumentState["domain"]["标注样式"],
+) {
+  const style = resolveNodeAnnotationStyle(node, domainAnnotationStyles);
+  if (!style.有边框) {
+    return null;
+  }
+  return style.有边框.边框形状 === "圆形" ? "ellipse" : "rect";
+}
+
+export function createAnnotationBackgroundObject(
+  shape: "rect" | "ellipse",
+  options?: { excludeFromExport?: boolean },
+) {
+  const excludeFromExport = options?.excludeFromExport ?? true;
+  if (shape === "ellipse") {
+    return new Ellipse({
+      originX: "center",
+      originY: "center",
+      selectable: false,
+      evented: false,
+      excludeFromExport,
+    });
+  }
+
+  return new Rect({
+    originX: "left",
+    originY: "top",
+    selectable: false,
+    evented: false,
+    excludeFromExport,
+  });
+}
+
+export function applyAnnotationBackgroundToTextNode(
+  node: EditorNode,
+  textObj: Textbox,
+  backgroundObj: FabricObject,
+  domainAnnotationStyles: DocumentState["domain"]["标注样式"],
+  visible: boolean,
+) {
+  const style = resolveNodeAnnotationStyle(node, domainAnnotationStyles);
+  if (!style.有边框) {
+    backgroundObj.set({ visible: false });
+    return;
+  }
+  const paddingX = 10;
+  const paddingY = 6;
+  const textWidth =
+    typeof (textObj as unknown as { getScaledWidth?: unknown })
+      .getScaledWidth === "function"
+      ? ensureNumber(
+          (
+            textObj as unknown as { getScaledWidth: () => unknown }
+          ).getScaledWidth(),
+          0,
+        )
+      : ensureNumber(textObj.width, 0);
+  const textHeight =
+    typeof (textObj as unknown as { getScaledHeight?: unknown })
+      .getScaledHeight === "function"
+      ? ensureNumber(
+          (
+            textObj as unknown as { getScaledHeight: () => unknown }
+          ).getScaledHeight(),
+          0,
+        )
+      : ensureNumber(textObj.height, 0);
+  const left = ensureNumber(
+    textObj.left,
+    ensureNumber(node.fabricObject.left, 0),
+  );
+  const top = ensureNumber(textObj.top, ensureNumber(node.fabricObject.top, 0));
+  const width = textWidth + paddingX * 2;
+  const height = textHeight + paddingY * 2;
+  const fill = style.有边框.是否透明 ? "rgba(0,0,0,0)" : style.有边框.背景颜色;
+  const strokeVisible = hasVisibleColor(style.有边框.边框颜色);
+  const common = {
+    fill,
+    stroke: strokeVisible ? style.有边框.边框颜色 : undefined,
+    strokeWidth: strokeVisible ? 1.5 : 0,
+    selectable: false,
+    evented: false,
+    visible,
+  };
+
+  if (backgroundObj instanceof Ellipse) {
+    backgroundObj.set({
+      ...common,
+      left: left + textWidth / 2,
+      top: top + textHeight / 2,
+      rx: width / 2,
+      ry: height / 2,
+    });
+    return;
+  }
+
+  backgroundObj.set({
+    ...common,
+    left: left - paddingX,
+    top: top - paddingY,
+    width,
+    height,
+    rx: 0,
+    ry: 0,
+  });
 }
 
 export function applyNodeToObject(
@@ -157,6 +318,7 @@ export function applyNodeToObject(
   obj: FabricObject,
   viewState: ViewState,
   options?: { preserveTransform?: boolean },
+  domainAnnotationStyles?: DocumentState["domain"]["标注样式"],
 ) {
   const visible = isNodeVisible(node, viewState);
   const { type: _type, ...props } = node.fabricObject;
@@ -171,11 +333,21 @@ export function applyNodeToObject(
     originY: _originY,
     ...nonTransformProps
   } = props;
+  const isLocked = node.locked;
+  const interactionProps = {
+    selectable: true,
+    evented: true,
+    lockMovementX: isLocked,
+    lockMovementY: isLocked,
+    lockScalingX: isLocked,
+    lockScalingY: isLocked,
+    lockRotation: isLocked,
+    hasControls: !isLocked,
+  };
 
   obj.set({
     ...(options?.preserveTransform ? nonTransformProps : props),
-    selectable: !node.locked,
-    evented: !node.locked,
+    ...interactionProps,
     visible,
     ...(options?.preserveTransform
       ? null
@@ -184,6 +356,20 @@ export function applyNodeToObject(
           originY: "top",
         }),
   });
+
+  if (obj instanceof Textbox) {
+    const resolvedStyle = resolveNodeAnnotationStyle(
+      node,
+      domainAnnotationStyles ?? {},
+    );
+    obj.set({
+      editable: !isLocked,
+      fontFamily: resolvedStyle.字体,
+      fontSize: resolvedStyle.字号,
+      fill: resolvedStyle.字色,
+      textBackgroundColor: "",
+    });
+  }
 }
 
 export function createFabricObject(node: EditorNode): FabricObject {
@@ -223,13 +409,15 @@ export function createNodeFromFabricObject(
   zIndex: number,
   name: string,
 ): EditorNode {
+  const fabricType = typeof obj.type === "string" ? obj.type : "object";
+  const business = createDefaultBusinessForFabricType(fabricType);
   return {
-    id: crypto.randomUUID(),
+    id: createNodeIdForBusiness(fabricType, business),
     name,
     locked: false,
     hidden: false,
     zIndex,
-    business: { type: "未标记" },
+    business,
     fabricObject: serializeFabricObject(obj),
   };
 }
@@ -238,5 +426,5 @@ export function createPathNodeFromFabricPath(
   path: Path,
   zIndex: number,
 ): EditorNode {
-  return createNodeFromFabricObject(path, zIndex, "未标记曲线");
+  return createNodeFromFabricObject(path, zIndex, "非车线曲线");
 }
