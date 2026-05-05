@@ -6,6 +6,25 @@ import type {
 
 const PREVIEW_GEAR_LABEL_PREFIX = "__preview__/mark-gear/label/";
 
+// ─── 档位颜色序列（与 MarkGearHost 共用同一份，避免预览与最终标注色不一致） ────
+
+export const GEAR_COLORS = [
+  "#2563eb", // 1档 蓝
+  "#0f766e", // 2档 深青
+  "#b45309", // 3档 琥珀
+  "#7c3aed", // 4档 紫
+  "#db2777", // 5档 粉
+  "#059669", // 6档 绿
+  "#d97706", // 7档 橙
+  "#6366f1", // 8档 靛
+  "#be185d", // 9档 玫红
+  "#16a34a", // 10档 深绿
+];
+
+export function getGearColor(gearNumber: number): string {
+  return GEAR_COLORS[(gearNumber - 1) % GEAR_COLORS.length];
+}
+
 // ─── 预览标注节点 ─────────────────────────────────────────────────────────────
 
 function createGearPreviewLabelNode(
@@ -23,13 +42,14 @@ function createGearPreviewLabelNode(
     business: { type: "标注", 字段: "档位", 归属车线Id: nodeId },
     fabricObject: {
       type: "textbox",
-      left: hitPoint.x,
-      top: hitPoint.y,
+      left: hitPoint.x - 20,
+      top: hitPoint.y - 10,
       text: String(gearNumber),
       fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
       fontSize: 18,
-      fill: "#b45309",
+      fill: "#111111",
       width: 40,
+      textAlign: "center",
       originX: "left",
       originY: "top",
       selectable: false,

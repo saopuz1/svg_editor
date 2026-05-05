@@ -331,11 +331,7 @@ export function EditorShell() {
   const isExtractCarlineHostOpen =
     activeBusinessCommandId === "extract-carline";
   const activeLegacyBusinessFlow =
-    activeBusinessCommandId &&
-    activeBusinessCommandId !== "extract-carline" &&
-    activeBusinessCommandId !== "mark-gear"
-      ? BUSINESS_COMMAND_FLOWS[activeBusinessCommandId]
-      : null;
+    null as (typeof BUSINESS_COMMAND_FLOWS)[keyof typeof BUSINESS_COMMAND_FLOWS] | null;
 
   const selectedNode = useMemo(() => {
     const id = selection[0];
@@ -456,14 +452,15 @@ export function EditorShell() {
   };
 
   const isMarkGearHostOpen = activeBusinessCommandId === "mark-gear";
+  const isMarkOddEvenHostOpen = activeBusinessCommandId === "mark-odd-even";
 
   useEffect(() => {
-    if (!isExtractCarlineHostOpen && !isMarkGearHostOpen) {
+    if (!isExtractCarlineHostOpen && !isMarkGearHostOpen && !isMarkOddEvenHostOpen) {
       setBusinessCommandSvgMarkup("");
       return;
     }
     setBusinessCommandSvgMarkup(stageRef.current?.exportSvg() ?? "");
-  }, [document, isExtractCarlineHostOpen, isMarkGearHostOpen, viewState]);
+  }, [document, isExtractCarlineHostOpen, isMarkGearHostOpen, isMarkOddEvenHostOpen, viewState]);
 
   const openBusinessCommandDialog = (commandId: BusinessCommandId) => {
     setActiveBusinessCommandId(commandId);
@@ -1460,17 +1457,19 @@ export function EditorShell() {
                 activeToolId={activeToolId}
                 viewState={viewState}
                 businessCommandActive={
-                  isExtractCarlineHostOpen || isMarkGearHostOpen
+                  isExtractCarlineHostOpen || isMarkGearHostOpen || isMarkOddEvenHostOpen
                 }
               />
               <BusinessCommandHost
-                open={isExtractCarlineHostOpen || isMarkGearHostOpen}
+                open={isExtractCarlineHostOpen || isMarkGearHostOpen || isMarkOddEvenHostOpen}
                 kind={
                   isExtractCarlineHostOpen
                     ? "extract-carline"
                     : isMarkGearHostOpen
                       ? "mark-gear"
-                      : null
+                      : isMarkOddEvenHostOpen
+                        ? "mark-odd-even"
+                        : null
                 }
                 document={document}
                 svgMarkup={businessCommandSvgMarkup}

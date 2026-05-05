@@ -5,10 +5,11 @@ import {
   EXTRACT_CARLINE_AREA_PRESETS,
   type ExtractCarlineSession,
 } from "../businessCommandTypes";
-import { applyExtractCarlineSession } from "../extractCarlinePreview";
+import { applyExtractCarlineSession, getAreaColor } from "../extractCarlinePreview";
 import {
   commitExtractCarlineCurrentArea,
   createExtractCarlineSession,
+  createExtractCarlineSessionFromDocument,
   toggleCurrentExtractCarlineLines,
   updateExtractCarlineCurrentDraft,
   validateExtractCarlineAreaName,
@@ -19,23 +20,9 @@ import {
   type SurfaceLabelItem,
 } from "../surfaces/BusinessCommandSvgSurface";
 import { MarkGearHost } from "./MarkGearHost";
+import { MarkOddEvenHost } from "./MarkOddEvenHost";
 
-const AREA_COLORS = [
-  "#2563eb",
-  "#0f766e",
-  "#b45309",
-  "#7c3aed",
-  "#db2777",
-  "#059669",
-  "#d97706",
-  "#6366f1",
-  "#be185d",
-  "#16a34a",
-];
-
-function getAreaColor(areaIndex: number): string {
-  return AREA_COLORS[areaIndex % AREA_COLORS.length];
-}
+// 区域颜色从 extractCarlinePreview 统一导入，预览与最终标注色保持一致
 
 const EXTRACT_CARLINE_STEPS = [
   {
@@ -53,7 +40,7 @@ export function BusinessCommandHost({
   onCommit,
 }: {
   open: boolean;
-  kind: "extract-carline" | "mark-gear" | null;
+  kind: "extract-carline" | "mark-gear" | "mark-odd-even" | null;
   document: DocumentState;
   svgMarkup: string;
   onClose: () => void;
@@ -70,7 +57,7 @@ export function BusinessCommandHost({
       setShowExitConfirm(false);
       return;
     }
-    setSession(createExtractCarlineSession());
+    setSession(createExtractCarlineSessionFromDocument(document));
     setValidationError("");
     setShowExitConfirm(false);
   }, [kind, open]);
@@ -316,13 +303,14 @@ export function BusinessCommandHost({
   // ── ExtractCarline Surface props ────────────────────────────────────────────
 
   const extractCarlineCandidateNodeIds = useMemo<ReadonlySet<string>>(() => {
-    // 车线提取：所有 line/path 节点均为候选
+    // 车线提取：只有尚未提取（business.type !== "车线"）的 line/path 节点才是候选
     const ids = new Set<string>();
     if (session) {
       for (const id of document.scene.order) {
         const node = document.scene.nodes[id];
         if (
           node &&
+          node.business.type !== "车线" &&
           (node.fabricObject.type === "line" ||
             node.fabricObject.type === "path")
         ) {
@@ -338,13 +326,15 @@ export function BusinessCommandHost({
   >(() => {
     const map = new Map<string, LineHighlightInfo>();
     if (!session) return map;
-    session.completedAreas.forEach((area, index) => {
+    // isRestored 区域已经是车线节点，不在 candidateNodeIds 里，不需要高亮
+    const newAreas = session.completedAreas.filter((a) => !a.isRestored);
+    newAreas.forEach((area, index) => {
       const color = getAreaColor(index);
       area.selectedLines.forEach((line) => {
         map.set(line.nodeId, { color, isUsed: true });
       });
     });
-    const currentColor = getAreaColor(session.completedAreas.length);
+    const currentColor = getAreaColor(newAreas.length);
     session.currentDraft.selectedLines.forEach((line) => {
       map.set(line.nodeId, { color: currentColor, isUsed: false });
     });
@@ -353,7 +343,9 @@ export function BusinessCommandHost({
 
   const extractCarlinePreviewLabels = useMemo<SurfaceLabelItem[]>(() => {
     if (!session) return [];
-    const completed = session.completedAreas.flatMap((area, index) => {
+    // isRestored 区域已提交过，不显示预览标签
+    const newAreas = session.completedAreas.filter((a) => !a.isRestored);
+    const completed = newAreas.flatMap((area, index) => {
       const color = getAreaColor(index);
       return area.selectedLines.map((line, i) => ({
         key: `${area.areaName}-${line.nodeId}`,
@@ -363,7 +355,7 @@ export function BusinessCommandHost({
         color,
       }));
     });
-    const currentColor = getAreaColor(session.completedAreas.length);
+    const currentColor = getAreaColor(newAreas.length);
     const current = session.currentDraft.selectedLines.map((line, i) => ({
       key: `${session.currentDraft.areaName}-${line.nodeId}`,
       text: String(i + 1),
@@ -378,6 +370,19 @@ export function BusinessCommandHost({
   if (open && kind === "mark-gear") {
     return (
       <MarkGearHost
+        open={open}
+        document={document}
+        svgMarkup={svgMarkup}
+        onClose={onClose}
+        onCommit={onCommit}
+      />
+    );
+  }
+
+  // mark-odd-even 由独立组件处理
+  if (open && kind === "mark-odd-even") {
+    return (
+      <MarkOddEvenHost
         open={open}
         document={document}
         svgMarkup={svgMarkup}

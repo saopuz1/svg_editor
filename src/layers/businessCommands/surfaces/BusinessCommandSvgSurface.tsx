@@ -515,7 +515,7 @@ export function BusinessCommandSvgSurface({
             className="businessCommandMarkerText"
             x={label.x}
             y={label.y}
-            fill={label.color || "#2563eb"}
+            fill="#111111"
           >
             {label.text}
           </text>

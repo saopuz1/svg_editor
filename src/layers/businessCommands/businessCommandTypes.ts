@@ -79,7 +79,10 @@ export interface ExtractCarlineAreaDraft {
   selectedLines: ExtractCarlineSelectedLine[];
 }
 
-export interface ExtractCarlineCompletedArea extends ExtractCarlineAreaDraft {}
+export interface ExtractCarlineCompletedArea extends ExtractCarlineAreaDraft {
+  /** true = 本次打开对话框前已提交过的区域，不重复写入 domain */
+  isRestored?: boolean;
+}
 
 export interface ExtractCarlineSession {
   type: "提取车线";
@@ -129,5 +132,22 @@ export interface MarkGearSession {
    * business.type === "车线" 的节点）。
    * 只有这些节点才允许被勾选。
    */
+  carlineNodeIds: ReadonlyArray<NodeId>;
+}
+
+// ─── 标记单双 Session 类型 ─────────────────────────────────────────────────
+
+/** 单双标记中已勾选的线条 */
+export interface MarkOddEvenSelectedLine {
+  nodeId: NodeId;
+  hitPoint: CanvasPoint;
+}
+
+/** 标记单双 Session 状态 */
+export interface MarkOddEvenSession {
+  type: "标记单双";
+  /** 被勾选为"双"的线条列表 */
+  doubleLines: MarkOddEvenSelectedLine[];
+  /** 所有车线节点 ID（只有这些允许被勾选） */
   carlineNodeIds: ReadonlyArray<NodeId>;
 }

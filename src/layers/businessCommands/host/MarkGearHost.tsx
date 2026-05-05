@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BusinessCommandDialog } from "../../../components/BusinessCommandDialog";
 import type { DocumentState } from "../../data/types";
 import type { MarkGearSession } from "../businessCommandTypes";
-import { applyMarkGearSession } from "../markGearPreview";
+import { applyMarkGearSession, getGearColor } from "../markGearPreview";
 import {
   canAdvanceToNextGear,
   canFinishMarkGear,
@@ -19,23 +19,7 @@ import {
   type SvgPoint,
 } from "../surfaces/BusinessCommandSvgSurface";
 
-// 档位颜色序列（每档用不同颜色）
-const GEAR_COLORS = [
-  "#2563eb", // 1档 蓝
-  "#0f766e", // 2档 深青
-  "#b45309", // 3档 琥珀
-  "#7c3aed", // 4档 紫
-  "#db2777", // 5档 粉
-  "#059669", // 6档 绿
-  "#d97706", // 7档 橙
-  "#6366f1", // 8档 靛
-  "#be185d", // 9档 玫红
-  "#16a34a", // 10档 深绿
-];
-
-function getGearColor(gearNumber: number): string {
-  return GEAR_COLORS[(gearNumber - 1) % GEAR_COLORS.length];
-}
+// 档位颜色从 markGearPreview 统一导入，预览与最终标注色保持一致
 
 const MARK_GEAR_STEPS = [
   {

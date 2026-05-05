@@ -1,3 +1,4 @@
+import type { DocumentState } from "../data/types";
 import {
   EXTRACT_CARLINE_AREA_PRESETS,
   type ExtractCarlineAreaDraft,
@@ -33,6 +34,78 @@ export function createExtractCarlineSession(): ExtractCarlineSession {
       carlineLength: EXTRACT_CARLINE_AREA_PRESETS[0]?.carlineLength ?? 10,
     }),
     completedAreas: [],
+  };
+}
+
+/**
+ * 从 document 的已有车线节点中恢复 ExtractCarlineSession。
+ * - 将所有 business.type === "车线" 的节点按区域分组，还原为 completedAreas。
+ * - 自动将 currentDraft 定位到第一个尚未使用的预设，避免重复提取同一区域。
+ */
+export function createExtractCarlineSessionFromDocument(
+  document: DocumentState,
+): ExtractCarlineSession {
+  // 按区域名称聚合已有车线节点
+  const areaMap = new Map<
+    string,
+    { nodeId: string; carlineLength: number; hitPoint: { x: number; y: number } }[]
+  >();
+
+  for (const id of document.scene.order) {
+    const node = document.scene.nodes[id];
+    if (!node || node.business.type !== "车线") continue;
+    const business = node.business;
+    const areaName = business.区域;
+    if (!areaMap.has(areaName)) {
+      areaMap.set(areaName, []);
+    }
+    areaMap.get(areaName)!.push({
+      nodeId: id,
+      carlineLength: business.尺数,
+      hitPoint: {
+        x: typeof node.fabricObject.left === "number" ? node.fabricObject.left : 0,
+        y: typeof node.fabricObject.top === "number" ? node.fabricObject.top : 0,
+      },
+    });
+  }
+
+  if (areaMap.size === 0) {
+    return createExtractCarlineSession();
+  }
+
+  const completedAreas: ExtractCarlineCompletedArea[] = [];
+  for (const [areaName, lines] of areaMap) {
+    const carlineLength = lines[0]?.carlineLength ?? 10;
+    const preset = EXTRACT_CARLINE_AREA_PRESETS.find(
+      (p) => p.areaName === areaName,
+    );
+    completedAreas.push({
+      areaName,
+      presetId: preset?.id ?? "自定义",
+      carlineLength,
+      selectedLines: lines.map((l) => ({
+        nodeId: l.nodeId,
+        hitPoint: l.hitPoint,
+      })),
+      isRestored: true,
+    });
+  }
+
+  // 自动选择第一个尚未使用的预设作为 currentDraft
+  const usedAreaNames = new Set(completedAreas.map((a) => a.areaName));
+  const nextPreset =
+    EXTRACT_CARLINE_AREA_PRESETS.find(
+      (p) => p.id !== "自定义" && !usedAreaNames.has(p.areaName),
+    ) ?? EXTRACT_CARLINE_AREA_PRESETS[EXTRACT_CARLINE_AREA_PRESETS.length - 1]!;
+
+  return {
+    type: "提取车线",
+    currentDraft: createExtractCarlineAreaDraft({
+      presetId: nextPreset.id,
+      areaName: nextPreset.id === "自定义" ? "" : nextPreset.areaName,
+      carlineLength: nextPreset.carlineLength,
+    }),
+    completedAreas,
   };
 }
 

@@ -10,6 +10,25 @@ import { createAnnotationNodeIdMap } from "../data/idRules";
 
 const PREVIEW_LABEL_NODE_PREFIX = "__preview__/extract-carline/label/";
 
+// ─── 区域颜色序列（与 BusinessCommandHost 共用同一份，避免预览与最终标注色不一致） ────
+
+export const AREA_COLORS = [
+  "#2563eb",
+  "#0f766e",
+  "#b45309",
+  "#7c3aed",
+  "#db2777",
+  "#059669",
+  "#d97706",
+  "#6366f1",
+  "#be185d",
+  "#16a34a",
+];
+
+export function getAreaColor(areaIndex: number): string {
+  return AREA_COLORS[areaIndex % AREA_COLORS.length];
+}
+
 function isExtractableLineNode(node: EditorNode) {
   return node.fabricObject.type === "path" || node.fabricObject.type === "line";
 }
@@ -34,11 +53,12 @@ function createPreviewCarlineNode(
 
 function buildPreviewLabelSpecs(
   areaDraft: ExtractCarlineAreaDraft,
+  globalOffset: number,
 ): PreviewLabelNodeSpec[] {
   return areaDraft.selectedLines.map((selectedLine, index) => ({
     id: `${PREVIEW_LABEL_NODE_PREFIX}${areaDraft.areaName}/${selectedLine.nodeId}`,
     lineNodeId: selectedLine.nodeId,
-    text: String(index + 1),
+    text: String(globalOffset + index + 1),
     position: { ...selectedLine.hitPoint },
     areaName: areaDraft.areaName,
   }));
@@ -57,15 +77,16 @@ function createPreviewLabelNode(spec: PreviewLabelNodeSpec): EditorNode {
     business: { type: "标注", 字段: "车线编号", 归属车线Id: spec.lineNodeId },
     fabricObject: {
       type: "textbox",
-      left: spec.position.x,
-      top: spec.position.y,
+      left: spec.position.x - 20,
+      top: spec.position.y - 10,
       text: spec.text,
       fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
       fontSize: 18,
-      fill: "#007acc",
+      fill: "#111111",
       width: 40,
-      originX: "left",
-      originY: "top",
+      textAlign: "center",
+      originX: "center",
+      originY: "center",
       selectable: false,
       evented: false,
     },
@@ -79,9 +100,10 @@ function cloneSceneOrder(order: NodeId[]) {
 function buildAreaPreview(
   nodes: DocumentState["scene"]["nodes"],
   areaDraft: ExtractCarlineAreaDraft,
+  globalOffset: number,
 ) {
   const nextNodes = { ...nodes };
-  const previewLabels = buildPreviewLabelSpecs(areaDraft);
+  const previewLabels = buildPreviewLabelSpecs(areaDraft, globalOffset);
 
   areaDraft.selectedLines.forEach((selectedLine, index) => {
     const node = nextNodes[selectedLine.nodeId];
@@ -89,7 +111,7 @@ function buildAreaPreview(
     nextNodes[selectedLine.nodeId] = createPreviewCarlineNode(
       node,
       areaDraft,
-      index + 1,
+      globalOffset + index + 1,
     );
   });
 
@@ -100,15 +122,16 @@ function buildAreaPreview(
 }
 
 function getPreviewAreas(session: ExtractCarlineSession) {
-  const areas: ExtractCarlineAreaDraft[] = session.completedAreas.map(
-    (area) => ({
+  // isRestored 区域已写入 document，不再参与预览或再次提交
+  const areas: ExtractCarlineAreaDraft[] = session.completedAreas
+    .filter((area) => !area.isRestored)
+    .map((area) => ({
       ...area,
       selectedLines: area.selectedLines.map((line) => ({
         nodeId: line.nodeId,
         hitPoint: { ...line.hitPoint },
       })),
-    }),
-  );
+    }));
 
   if (session.currentDraft.selectedLines.length > 0) {
     areas.push({
@@ -131,8 +154,15 @@ export function buildExtractCarlinePreviewDocument(
   const previewLabelNodeIds: NodeId[] = [];
   const nextOrder = cloneSceneOrder(next.scene.order);
 
+  // isRestored 区域的线条数是全局编号的起始偏移
+  const restoredCount = session.completedAreas
+    .filter((a) => a.isRestored)
+    .reduce((sum, a) => sum + a.selectedLines.length, 0);
+  let globalOffset = restoredCount;
+
   for (const areaDraft of getPreviewAreas(session)) {
-    const areaPreview = buildAreaPreview(next.scene.nodes, areaDraft);
+    const areaPreview = buildAreaPreview(next.scene.nodes, areaDraft, globalOffset);
+    globalOffset += areaDraft.selectedLines.length;
     next.scene.nodes = areaPreview.nextNodes;
 
     for (const label of areaPreview.previewLabels) {
@@ -162,7 +192,11 @@ export function applyExtractCarlineSession(
   const nextDocument = result.document;
 
   const carlines: DocumentState["domain"]["车线"] = [];
-  let globalOrder = 0;
+  // isRestored 区域已写入 domain，新增编号从已有车线总数后续开始
+  const restoredCount = session.completedAreas
+    .filter((a) => a.isRestored)
+    .reduce((sum, a) => sum + a.selectedLines.length, 0);
+  let globalOrder = restoredCount;
 
   for (const areaDraft of getPreviewAreas(session)) {
     for (const _selectedLine of areaDraft.selectedLines) {
