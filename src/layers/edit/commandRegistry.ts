@@ -1,3 +1,4 @@
+import { applyDmlModifiers } from "../businessCommands/markDmlAnnotations";
 import type { DocumentState, EditorNode } from "../data/types";
 import type { CommandType, EditorCommand } from "./commands";
 
@@ -273,18 +274,21 @@ export function registerDefaultCommandHandlers(registry: CommandRegistry) {
 
   registry.register({
     type: "设置自动修改器",
-    execute: (state, command, context) => ({
-      ...state,
-      meta: {
-        ...state.meta,
-        updatedAt: context.now,
-        version: state.meta.version + 1,
-      },
-      domain: {
-        ...state.domain,
-        自动修改器: command.payload.autoModifiers,
-      },
-    }),
+    execute: (state, command, context) => {
+      const withUpdatedModifiers: DocumentState = {
+        ...state,
+        meta: {
+          ...state.meta,
+          updatedAt: context.now,
+          version: state.meta.version + 1,
+        },
+        domain: {
+          ...state.domain,
+          自动修改器: command.payload.autoModifiers,
+        },
+      };
+      return applyDmlModifiers(withUpdatedModifiers);
+    },
   });
 
   registry.register({

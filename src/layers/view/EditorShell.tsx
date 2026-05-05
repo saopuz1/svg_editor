@@ -432,6 +432,34 @@ export function EditorShell() {
     setAutoModifiers(document.domain.自动修改器.map((m) => (m.id === id ? recipe(m) : m)));
   };
 
+  // 从当前文档数据提取唯一区域名和档位名，用于修改器下拉选项
+  const documentAreas = useMemo(() => {
+    const areas = new Set<string>();
+    for (const nodeId of document.scene.order) {
+      const node = document.scene.nodes[nodeId];
+      if (node?.business.type === "车线" && node.business.区域) {
+        areas.add(node.business.区域);
+      }
+    }
+    return [...areas].sort();
+  }, [document.scene.nodes, document.scene.order]);
+
+  const documentGears = useMemo(() => {
+    const gears = new Set<string>();
+    for (const nodeId of document.scene.order) {
+      const node = document.scene.nodes[nodeId];
+      if (node?.business.type === "车线" && node.business.档位) {
+        gears.add(node.business.档位);
+      }
+    }
+    return [...gears].sort((a, b) => {
+      const na = Number(a);
+      const nb = Number(b);
+      if (!isNaN(na) && !isNaN(nb)) return na - nb;
+      return a.localeCompare(b);
+    });
+  }, [document.scene.nodes, document.scene.order]);
+
   const isMarkGearHostOpen = activeBusinessCommandId === "mark-gear";
   const isMarkOddEvenHostOpen = activeBusinessCommandId === "mark-odd-even";
 
@@ -1573,10 +1601,9 @@ export function EditorShell() {
                                   ? (m as Extract<typeof m, { type: "按区域自动标注DML" }>).范围.map(
                                       (r, rIdx) => (
                                         <div key={rIdx} className="modifierRangeRow">
-                                          <input
+                                          <select
                                             className="input"
                                             style={{ flex: 2 }}
-                                            placeholder="区域名"
                                             value={r.区域}
                                             onChange={(e) =>
                                               patchModifier(id, (mod) => {
@@ -1589,7 +1616,15 @@ export function EditorShell() {
                                                 };
                                               })
                                             }
-                                          />
+                                          >
+                                            <option value="">选择区域</option>
+                                            {documentAreas.map((area) => (
+                                              <option key={area} value={area}>{area}</option>
+                                            ))}
+                                            {r.区域 && !documentAreas.includes(r.区域) && (
+                                              <option value={r.区域}>{r.区域}</option>
+                                            )}
+                                          </select>
                                           <input
                                             className="input"
                                             type="number"
@@ -1641,10 +1676,9 @@ export function EditorShell() {
                                   : (m as Extract<typeof m, { type: "按档位自动标注DML" }>).范围.map(
                                       (r, rIdx) => (
                                         <div key={rIdx} className="modifierRangeRow">
-                                          <input
+                                          <select
                                             className="input"
                                             style={{ flex: 2 }}
-                                            placeholder="档位名"
                                             value={r.档位}
                                             onChange={(e) =>
                                               patchModifier(id, (mod) => {
@@ -1657,7 +1691,15 @@ export function EditorShell() {
                                                 };
                                               })
                                             }
-                                          />
+                                          >
+                                            <option value="">选择档位</option>
+                                            {documentGears.map((gear) => (
+                                              <option key={gear} value={gear}>{gear}</option>
+                                            ))}
+                                            {r.档位 && !documentGears.includes(r.档位) && (
+                                              <option value={r.档位}>{r.档位}</option>
+                                            )}
+                                          </select>
                                           <input
                                             className="input"
                                             type="number"
