@@ -5,6 +5,9 @@ import type { ToolId } from './tools';
 export interface ToolControllerContext {
   canvas: Canvas;
   editor: Editor;
+  onSelectLassoGesture?: (
+    points: Array<{ x: number; y: number }>,
+  ) => boolean;
 }
 
 export interface ToolController {

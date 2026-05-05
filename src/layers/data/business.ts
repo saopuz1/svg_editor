@@ -11,7 +11,7 @@ import { createAnnotationNodeIdMap } from "./idRules";
 export const DEFAULT_ANNOTATION_FIELD: AnnotationField = "区域";
 
 export function isLineLikeFabricType(fabricType: string) {
-  return fabricType === "path";
+  return fabricType === "path" || fabricType === "line";
 }
 
 export function isTextLikeFabricType(fabricType: string) {

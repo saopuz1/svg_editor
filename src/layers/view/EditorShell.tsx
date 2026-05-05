@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { HexColorPicker } from 'react-colorful';
+import { BusinessCommandDialog } from '../../components/BusinessCommandDialog';
 import { MenuDropdown } from '../../components/MenuDropdown';
 import { useDocumentState, useEditState, useEditor } from '../../app/EditorContext';
+import { BusinessCommandHost } from '../businessCommands/host/BusinessCommandHost';
 import type {
   AnnotationField,
   AutoModifierConfig,
@@ -24,7 +26,7 @@ import {
   shouldRegenerateNodeIdOnBusinessChange,
 } from '../data/idRules';
 import { serializeDocument } from '../data/serialization';
-import { createCommand, createRectNode, createTextboxNode } from '../edit/commands';
+import { createCommand } from '../edit/commands';
 import {
   CANCEL_ACTIVE_DRAWING_EVENT,
   resolveShortcutAction,
@@ -78,6 +80,71 @@ const FONT_FAMILY_OPTIONS = [
     value: '"Courier New", monospace',
   },
 ] as const;
+
+type BusinessCommandId = 'extract-carline' | 'mark-gear' | 'mark-odd-even';
+
+const BUSINESS_COMMAND_FLOWS: Record<
+  BusinessCommandId,
+  {
+    menuLabel: string;
+    title: string;
+    summary: string;
+    steps: Array<{
+      title: string;
+      description: string;
+    }>;
+  }
+> = {
+  'extract-carline': {
+    menuLabel: '提取车线',
+    title: '提取车线',
+    summary: '按区域逐步提取车线，业务命令模式使用独立 SVG 命中层。',
+    steps: [
+      {
+        title: '当前区域',
+        description: '选择区域、设置车线长度，并在 SVG 命中层里刷选线条。',
+      },
+    ],
+  },
+  'mark-gear': {
+    menuLabel: '标记档位',
+    title: '标记档位',
+    summary: '按步骤确认目标对象、档位规则和最终写入。',
+    steps: [
+      {
+        title: '选择目标对象',
+        description: '确认本次需要写入档位信息的对象范围，避免误修改无关节点。',
+      },
+      {
+        title: '设置档位规则',
+        description: '核对档位来源、映射方式和写入策略，确保标记结果符合预期。',
+      },
+      {
+        title: '完成标记',
+        description: '确认后结束档位标记流程，后续可在这里接入实际业务执行逻辑。',
+      },
+    ],
+  },
+  'mark-odd-even': {
+    menuLabel: '标记单双',
+    title: '标记单双',
+    summary: '按步骤确认目标对象、单双规则和执行结果。',
+    steps: [
+      {
+        title: '选择目标对象',
+        description: '确认本次需要标记单双属性的对象范围，避免影响当前文档中的其他对象。',
+      },
+      {
+        title: '设置单双规则',
+        description: '核对单双判定依据、继承方式和覆盖策略，保证结果可控。',
+      },
+      {
+        title: '完成标记',
+        description: '确认后结束单双标记流程，后续可在这里接入实际业务执行逻辑。',
+      },
+    ],
+  },
+}
 
 function normalizeHexColor(value: string, fallback: string) {
   return /^#([0-9a-fA-F]{6})$/.test(value) ? value : fallback;
@@ -232,6 +299,12 @@ export function EditorShell() {
 
   const [importError, setImportError] = useState<string>('');
   const [viewState, setViewState] = useState<ViewState>(DEFAULT_VIEW_STATE);
+  const [activeBusinessCommandId, setActiveBusinessCommandId] =
+    useState<BusinessCommandId | null>(null);
+  const [businessCommandStepIndex, setBusinessCommandStepIndex] = useState(0);
+  const [showBusinessCommandExitConfirm, setShowBusinessCommandExitConfirm] =
+    useState(false);
+  const [businessCommandSvgMarkup, setBusinessCommandSvgMarkup] = useState('');
 
   const [rightTab, setRightTab] = useState<'inspector' | 'rules'>('inspector');
 
@@ -245,6 +318,11 @@ export function EditorShell() {
   const tools = editState.tools;
   const selection = editState.selection;
   const history = editor.edit.getHistory();
+  const isExtractCarlineHostOpen = activeBusinessCommandId === 'extract-carline';
+  const activeLegacyBusinessFlow =
+    activeBusinessCommandId && activeBusinessCommandId !== 'extract-carline'
+      ? BUSINESS_COMMAND_FLOWS[activeBusinessCommandId]
+      : null;
 
   const selectedNode = useMemo(() => {
     const id = selection[0];
@@ -339,6 +417,55 @@ export function EditorShell() {
 
   const commandNotImplemented = (name: string) => {
     window.alert(`${name}：骨架中已预留入口，业务逻辑待接入`);
+  };
+
+  useEffect(() => {
+    if (!isExtractCarlineHostOpen) {
+      setBusinessCommandSvgMarkup('');
+      return;
+    }
+    setBusinessCommandSvgMarkup(stageRef.current?.exportSvg() ?? '');
+  }, [document, isExtractCarlineHostOpen, viewState]);
+
+  const openBusinessCommandDialog = (commandId: BusinessCommandId) => {
+    setActiveBusinessCommandId(commandId);
+    setBusinessCommandStepIndex(0);
+    setShowBusinessCommandExitConfirm(false);
+  };
+
+  const requestCloseBusinessCommandDialog = () => {
+    if (!activeLegacyBusinessFlow) return;
+    setShowBusinessCommandExitConfirm(true);
+  };
+
+  const cancelCloseBusinessCommandDialog = () => {
+    setShowBusinessCommandExitConfirm(false);
+  };
+
+  const confirmCloseBusinessCommandDialog = () => {
+    setShowBusinessCommandExitConfirm(false);
+    setActiveBusinessCommandId(null);
+    setBusinessCommandStepIndex(0);
+  };
+
+  const goToPreviousBusinessCommandStep = () => {
+    setBusinessCommandStepIndex((prev) => Math.max(0, prev - 1));
+  };
+
+  const goToNextBusinessCommandStep = () => {
+    if (!activeLegacyBusinessFlow) return;
+    setBusinessCommandStepIndex((prev) =>
+      Math.min(activeLegacyBusinessFlow.steps.length - 1, prev + 1),
+    );
+  };
+
+  const finishBusinessCommandDialog = () => {
+    if (!activeLegacyBusinessFlow) return;
+    const commandTitle = activeLegacyBusinessFlow.title;
+    setShowBusinessCommandExitConfirm(false);
+    setActiveBusinessCommandId(null);
+    setBusinessCommandStepIndex(0);
+    window.alert(`${commandTitle}：流程已完成，业务逻辑待接入`);
   };
 
   useEffect(() => {
@@ -1031,70 +1158,27 @@ export function EditorShell() {
           </div>
 
           <div className="viewTitle" style={{ marginTop: 10 }}>
-            文档
-          </div>
-          <div
-            className="checkRow"
-            role="button"
-            onClick={() =>
-              editor.edit.execute(
-                createCommand('新增节点', { node: createRectNode() }),
-                '新增矩形',
-              )
-            }
-          >
-            新增矩形
-          </div>
-          <div
-            className="checkRow"
-            role="button"
-            onClick={() =>
-              editor.edit.execute(
-                createCommand('新增节点', { node: createTextboxNode() }),
-                '新增文本',
-              )
-            }
-          >
-            新增文本
-          </div>
-          <div
-            className="checkRow"
-            role="button"
-            onClick={() =>
-              editor.edit.execute(
-                createCommand('删除节点', { nodeIds: selection }),
-                '删除',
-              )
-            }
-            style={{ opacity: selection.length === 0 ? 0.4 : 1 }}
-          >
-            删除选中
-          </div>
-
-          <div className="viewTitle" style={{ marginTop: 10 }}>
             业务命令
           </div>
-          <div
-            className="checkRow"
-            role="button"
-            onClick={() => commandNotImplemented('提取车线')}
-          >
-            提取车线
-          </div>
-          <div
-            className="checkRow"
-            role="button"
-            onClick={() => commandNotImplemented('标记档位')}
-          >
-            标记档位
-          </div>
-          <div
-            className="checkRow"
-            role="button"
-            onClick={() => commandNotImplemented('标记单双')}
-          >
-            标记单双
-          </div>
+          {(
+            [
+              'extract-carline',
+              'mark-gear',
+              'mark-odd-even',
+            ] as BusinessCommandId[]
+          ).map((commandId) => {
+            const command = BUSINESS_COMMAND_FLOWS[commandId];
+            return (
+              <div
+                key={commandId}
+                className="checkRow"
+                role="button"
+                onClick={() => openBusinessCommandDialog(commandId)}
+              >
+                {command.menuLabel}
+              </div>
+            );
+          })}
         </MenuDropdown>
 
         <MenuDropdown label="视图">
@@ -1262,6 +1346,18 @@ export function EditorShell() {
                 selection={selection}
                 activeToolId={activeToolId}
                 viewState={viewState}
+                businessCommandActive={isExtractCarlineHostOpen}
+              />
+              <BusinessCommandHost
+                open={isExtractCarlineHostOpen}
+                kind={isExtractCarlineHostOpen ? 'extract-carline' : null}
+                document={document}
+                svgMarkup={businessCommandSvgMarkup}
+                onClose={() => setActiveBusinessCommandId(null)}
+                onCommit={(nextDocument) => {
+                  editor.data.setState(nextDocument);
+                  setActiveBusinessCommandId(null);
+                }}
               />
             </div>
           </div>
@@ -1405,6 +1501,21 @@ export function EditorShell() {
         </div>
         <div>选中：{selection.length}</div>
       </footer>
+
+      <BusinessCommandDialog
+        open={Boolean(activeLegacyBusinessFlow)}
+        title={activeLegacyBusinessFlow?.title ?? ''}
+        summary={activeLegacyBusinessFlow?.summary}
+        steps={activeLegacyBusinessFlow?.steps ?? []}
+        currentStep={businessCommandStepIndex}
+        showExitConfirm={showBusinessCommandExitConfirm}
+        onPrev={goToPreviousBusinessCommandStep}
+        onNext={goToNextBusinessCommandStep}
+        onFinish={finishBusinessCommandDialog}
+        onRequestClose={requestCloseBusinessCommandDialog}
+        onCancelExit={cancelCloseBusinessCommandDialog}
+        onConfirmExit={confirmCloseBusinessCommandDialog}
+      />
     </div>
   );
 }

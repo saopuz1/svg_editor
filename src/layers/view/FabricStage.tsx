@@ -132,8 +132,12 @@ export const FabricStage = forwardRef<
     selection: NodeId[];
     activeToolId: ToolId;
     viewState: ViewState;
+    businessCommandActive?: boolean;
   }
->(function FabricStage({ editor, document, selection, activeToolId, viewState }, ref) {
+>(function FabricStage(
+  { editor, document, selection, activeToolId, viewState, businessCommandActive = false },
+  ref,
+) {
   const canvasElRef = useRef<HTMLCanvasElement | null>(null);
   const fabricRef = useRef<Canvas | null>(null);
   const objectMapRef = useRef<Map<NodeId, FabricObject>>(new Map());
@@ -192,14 +196,16 @@ export const FabricStage = forwardRef<
     const canvas = new Canvas(canvasElRef.current, {
       backgroundColor: '#ffffff',
       preserveObjectStacking: true,
-      selection: true,
+      selection: !businessCommandActive,
       selectionColor: 'rgba(37, 99, 235, 0.08)',
       selectionBorderColor: 'rgba(37, 99, 235, 0.9)',
       selectionLineWidth: 1.5,
+      skipTargetFind: businessCommandActive,
     });
 
     canvas.setDimensions(canvasSize);
     canvas.setViewportTransform([...viewportTransformRef.current]);
+    canvas.uniformScaling = false;
     fabricRef.current = canvas;
     setReady(true);
 

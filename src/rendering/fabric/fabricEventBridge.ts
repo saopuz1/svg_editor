@@ -30,6 +30,9 @@ export interface FabricToolBridgeOptions {
   canvas: Canvas;
   editor: Editor;
   activeToolId: ToolId;
+  onSelectLassoGesture?: (
+    points: Array<{ x: number; y: number }>,
+  ) => boolean;
 }
 
 export function bindFabricCoreEvents({
@@ -154,6 +157,7 @@ export function bindFabricToolEvents({
   canvas,
   editor,
   activeToolId,
+  onSelectLassoGesture,
 }: FabricToolBridgeOptions) {
   const controller = editor.toolRegistry.get(activeToolId);
   if (!controller) {
@@ -164,5 +168,5 @@ export function bindFabricToolEvents({
     return () => undefined;
   }
 
-  return controller.activate({ canvas, editor });
+  return controller.activate({ canvas, editor, onSelectLassoGesture });
 }

@@ -1,4 +1,4 @@
-import { Ellipse, Path, Rect, Textbox, type FabricObject } from "fabric";
+import { Ellipse, Line, Path, Rect, Textbox, type FabricObject } from "fabric";
 import type {
   DocumentState,
   EditorNode,
@@ -391,6 +391,31 @@ export function createFabricObject(node: EditorNode): FabricObject {
       originY: "top",
       width: ensureNumber(serialized.width, 320),
     });
+  }
+
+  if (serialized.type === "line") {
+    const {
+      path: _path,
+      type: _type,
+      x1,
+      y1,
+      x2,
+      y2,
+      ...rest
+    } = serialized;
+    return new Line(
+      [
+        ensureNumber(x1, 0),
+        ensureNumber(y1, 0),
+        ensureNumber(x2, 0),
+        ensureNumber(y2, 0),
+      ],
+      {
+        ...rest,
+        originX: "left",
+        originY: "top",
+      },
+    );
   }
 
   const { path, type: _type, ...rest } = serialized;

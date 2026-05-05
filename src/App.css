@@ -276,6 +276,7 @@
   border-radius: var(--radius);
   border: 1px solid var(--border);
   padding: 14px;
+  position: relative;
 }
 
 .fabricCanvas {
@@ -286,6 +287,76 @@
 
 .canvas-container .lower-canvas {
   background: #ffffff;
+}
+
+.businessCommandSurface {
+  position: absolute;
+  inset: 14px;
+  border-radius: 10px;
+  overflow: hidden;
+  z-index: 3;
+  cursor: crosshair;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.businessCommandSurfaceSvg,
+.businessCommandSurfaceSvg svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.businessCommandSurfaceSvg,
+.businessCommandSurfaceSvg * {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.businessCommandSurfaceOverlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.businessCommandLine {
+  transition: stroke 100ms ease, stroke-width 100ms ease, opacity 100ms ease;
+}
+
+.businessCommandLineCurrent {
+  filter: drop-shadow(0 0 3px rgba(37, 99, 235, 0.35));
+}
+
+.businessCommandLineHover {
+  filter: drop-shadow(0 0 2px rgba(59, 130, 246, 0.28));
+}
+
+.businessCommandLineCompleted {
+  filter: drop-shadow(0 0 2px rgba(15, 118, 110, 0.28));
+}
+
+.businessCommandBrushPath {
+  fill: none;
+  stroke: rgba(37, 99, 235, 0.92);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 2px rgba(37, 99, 235, 0.2));
+}
+
+.businessCommandMarkerText {
+  fill: #2563eb;
+  stroke: #ffffff;
+  stroke-width: 3px;
+  paint-order: stroke;
+  font-size: 16px;
+  font-weight: 800;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  pointer-events: none;
 }
 
 .floatingHint {
@@ -620,6 +691,445 @@
   font-size: 13px;
 }
 
+.businessDialogOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  pointer-events: none;
+}
+
+.businessDialog {
+  pointer-events: auto;
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 92px);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 22px 70px rgba(15, 23, 42, 0.22);
+  overflow: hidden;
+}
+
+.businessDialogResizeHandle {
+  position: absolute;
+  z-index: 2;
+}
+
+.businessDialogResizeHandleTop,
+.businessDialogResizeHandleBottom {
+  left: 10px;
+  right: 10px;
+  height: 10px;
+}
+
+.businessDialogResizeHandleTop {
+  top: -5px;
+  cursor: ns-resize;
+}
+
+.businessDialogResizeHandleBottom {
+  bottom: -5px;
+  cursor: ns-resize;
+}
+
+.businessDialogResizeHandleLeft,
+.businessDialogResizeHandleRight {
+  top: 10px;
+  bottom: 10px;
+  width: 10px;
+}
+
+.businessDialogResizeHandleLeft {
+  left: -5px;
+  cursor: ew-resize;
+}
+
+.businessDialogResizeHandleRight {
+  right: -5px;
+  cursor: ew-resize;
+}
+
+.businessDialogHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  background: linear-gradient(180deg, rgba(0, 122, 204, 0.08), rgba(0, 122, 204, 0.02));
+}
+
+.businessDialogDragHandle {
+  cursor: move;
+  user-select: none;
+}
+
+.businessDialogTitle {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.businessDialogSummary {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.businessDialogClose {
+  width: 34px;
+  height: 34px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.businessDialogClose:hover {
+  color: var(--accent);
+  background: rgba(0, 122, 204, 0.08);
+  border-color: rgba(0, 122, 204, 0.14);
+}
+
+.businessDialogSteps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px 18px 0;
+}
+
+.businessDialogStep {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.businessDialogStepIndex {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  flex-shrink: 0;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+}
+
+.businessDialogStepText {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+.businessDialogStepActive {
+  border-color: rgba(0, 122, 204, 0.3);
+  background: rgba(0, 122, 204, 0.08);
+}
+
+.businessDialogStepActive .businessDialogStepIndex {
+  border-color: rgba(0, 122, 204, 0.24);
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.businessDialogStepDone {
+  border-color: rgba(22, 163, 74, 0.25);
+  background: rgba(22, 163, 74, 0.08);
+}
+
+.businessDialogStepDone .businessDialogStepIndex {
+  border-color: rgba(22, 163, 74, 0.16);
+  background: rgba(22, 163, 74, 0.14);
+  color: #166534;
+}
+
+.businessDialogBody {
+  flex: 1;
+  padding: 16px 18px;
+  overflow: auto;
+}
+
+.businessDialogBodyLabel {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.businessDialogBodyTitle {
+  margin-top: 8px;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.businessDialogBodyDescription {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  white-space: pre-line;
+}
+
+.businessDialogHint {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(0, 122, 204, 0.14);
+  border-radius: 10px;
+  background: rgba(0, 122, 204, 0.06);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--accent);
+}
+
+.businessDialogSection {
+  margin-top: 14px;
+}
+
+.businessDialogFieldLabel {
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.businessDialogPresetGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.businessDialogPresetGrid .toggleButton {
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  background: rgba(248, 250, 252, 0.9);
+  color: var(--text);
+}
+
+.businessDialogMetaGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.businessDialogMetaCard {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.businessDialogMetaLabel {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.businessDialogMetaValue {
+  margin-top: 4px;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.businessDialogToolSwitch {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.businessDialogSelectionList {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.businessDialogSelectionItem {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #ffffff;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.businessDialogError {
+  margin-top: 10px;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.businessDialogFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 18px 18px;
+}
+
+.businessDialogFooterLeft,
+.businessDialogFooterRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.businessDialogConfirmOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.businessDialogConfirm {
+  width: min(360px, 100%);
+  padding: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: var(--shadow);
+}
+
+.businessDialogConfirmTitle {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.businessDialogConfirmText {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+
+.businessDialogConfirmActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.extractCarlinePanel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.extractCarlinePanelHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.extractCarlinePanelTitle {
+  margin-top: 4px;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.extractCarlinePanelSubtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.extractCarlinePanelSection {
+  margin-top: 0;
+}
+
+.extractCarlineFormGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(110px, 0.8fr);
+  gap: 10px;
+  align-items: end;
+}
+
+.extractCarlineAreaNameRow {
+  margin-top: 10px;
+}
+
+.extractCarlineSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.extractCarlineSummaryCard {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.extractCarlineHint {
+  margin-top: 8px;
+}
+
+.extractCarlineListsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.extractCarlineSelectionList {
+  max-height: 160px;
+  overflow: auto;
+}
+
+.extractCarlineSelectionItem {
+  min-height: 34px;
+}
+
+@media (max-width: 760px) {
+  .businessDialog {
+    min-height: 0;
+  }
+
+  .businessDialogSteps {
+    grid-template-columns: 1fr;
+  }
+
+  .businessDialogPresetGrid,
+  .businessDialogMetaGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .businessDialogFooter {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .businessDialogFooterLeft,
+  .businessDialogFooterRight {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
 .muted {
   color: var(--text-muted);
   font-size: 12px;
@@ -686,12 +1196,4 @@
 .edgeToggleBtn svg {
   width: 16px;
   height: 16px;
-}
-
-.edgeToggleBtnLeft {
-  /* left 由 inline style 控制 */
-}
-
-.edgeToggleBtnRight {
-  /* right 由 inline style 控制 */
 }

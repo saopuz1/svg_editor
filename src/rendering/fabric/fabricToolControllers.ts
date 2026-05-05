@@ -542,7 +542,7 @@ function createSelectionToolController(
 
 const selectLassoToolController: ToolController = {
   id: "select-lasso",
-  activate({ canvas, editor }: ToolControllerContext) {
+  activate({ canvas, editor, onSelectLassoGesture }: ToolControllerContext) {
     canvas.defaultCursor = "crosshair";
     canvas.isDrawingMode = false;
     canvas.selection = false;
@@ -613,6 +613,14 @@ const selectLassoToolController: ToolController = {
       if (!isDrawing) return;
       isDrawing = false;
       if (points.length > 1) {
+        if (onSelectLassoGesture?.(points.map((point) => ({ ...point })))) {
+          canvas.discardActiveObject();
+          editor.edit.act({ type: "SET_SELECTION", payload: { nodeIds: [] } });
+          points = [];
+          removePreview();
+          canvas.renderAll();
+          return;
+        }
         commitSelection();
       } else {
         canvas.discardActiveObject();
