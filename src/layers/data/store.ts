@@ -84,7 +84,10 @@ export function createDefaultDocument(): DocumentState {
     domain: {
       车线: [],
       标注样式: {},
-      自动修改器: [],
+      自动修改器: [
+        { id: crypto.randomUUID(), type: "按区域自动标注DML", 启用: true, 规律: ["D", "M", "L"], 范围: [] },
+        { id: crypto.randomUUID(), type: "按档位自动标注DML", 启用: true, 规律: ["D", "M", "L"], 范围: [] },
+      ],
     },
   };
 }

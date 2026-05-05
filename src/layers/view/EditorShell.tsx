@@ -317,6 +317,7 @@ export function EditorShell() {
   const [businessCommandSvgMarkup, setBusinessCommandSvgMarkup] = useState("");
 
   const [rightTab, setRightTab] = useState<"inspector" | "rules">("inspector");
+  const [newModifierType, setNewModifierType] = useState<"按区域自动标注DML" | "按档位自动标注DML">("按区域自动标注DML");
 
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
@@ -414,13 +415,12 @@ export function EditorShell() {
   };
 
   const addModifier = () => {
-    const next: AutoModifierConfig = {
-      id: crypto.randomUUID(),
-      type: "按区域自动标注DML",
-      启用: true,
-      规律: ["D", "M", "L"],
-      范围: [{ 区域: "A", 开始: 1, 结束: 10 }],
-    };
+    const id = crypto.randomUUID();
+    const base = { id, 启用: true, 规律: ["D", "M", "L"] };
+    const next: AutoModifierConfig =
+      newModifierType === "按区域自动标注DML"
+        ? { ...base, type: "按区域自动标注DML", 范围: [] }
+        : { ...base, type: "按档位自动标注DML", 范围: [] };
     setAutoModifiers([...document.domain.自动修改器, next]);
   };
 
@@ -428,27 +428,8 @@ export function EditorShell() {
     setAutoModifiers(document.domain.自动修改器.filter((m) => m.id !== id));
   };
 
-  const moveModifier = (id: string, direction: -1 | 1) => {
-    const idx = document.domain.自动修改器.findIndex((m) => m.id === id);
-    if (idx < 0) return;
-    const next = document.domain.自动修改器.slice();
-    const target = idx + direction;
-    if (target < 0 || target >= next.length) return;
-    const [item] = next.splice(idx, 1);
-    next.splice(target, 0, item);
-    setAutoModifiers(next);
-  };
-
-  const toggleModifierEnabled = (id: string) => {
-    setAutoModifiers(
-      document.domain.自动修改器.map((m) =>
-        m.id === id ? { ...m, 启用: !m.启用 } : m,
-      ),
-    );
-  };
-
-  const commandNotImplemented = (name: string) => {
-    window.alert(`${name}：骨架中已预留入口，业务逻辑待接入`);
+  const patchModifier = (id: string, recipe: (m: AutoModifierConfig) => AutoModifierConfig) => {
+    setAutoModifiers(document.domain.自动修改器.map((m) => (m.id === id ? recipe(m) : m)));
   };
 
   const isMarkGearHostOpen = activeBusinessCommandId === "mark-gear";
@@ -592,12 +573,7 @@ export function EditorShell() {
       : null;
 
     if (fieldId === "id") {
-      return (
-        <div className="row" key={fieldId}>
-          <div className="label">ID</div>
-          <input className="input" value={selectedNode.id} readOnly />
-        </div>
-      );
+      return renderReadOnlyField(fieldId, "ID", selectedNode.id);
     }
 
     if (fieldId === "left") {
@@ -881,12 +857,14 @@ export function EditorShell() {
       const businessTypeOptions = getAllowedBusinessTypesForFabricType(
         selectedNode.fabricObject.type,
       );
+      const isAnnotationNode = selectedNode.business.type === "标注";
       return (
         <div className="row" key={fieldId}>
           <div className="label">业务类型</div>
           <select
             className="input"
             value={selectedNode.business.type}
+            disabled={isAnnotationNode}
             onChange={(e) => {
               const nextType = e.currentTarget.value as NodeBusiness["type"];
               const provisionalBusiness = createBusinessForFabricTypeAndType(
@@ -1080,6 +1058,7 @@ export function EditorShell() {
           <select
             className="input"
             value={annotationBusiness.字段}
+            disabled
             onChange={(e) => {
               const nextBusiness = {
                 ...annotationBusiness,
@@ -1120,22 +1099,7 @@ export function EditorShell() {
         NodeBusiness,
         { type: "标注" }
       >;
-      return (
-        <div className="row" key={fieldId}>
-          <div className="label">归属车线ID</div>
-          <input
-            className="input"
-            value={annotationBusiness.归属车线Id}
-            onChange={(e) =>
-              setBusiness(
-                selectedNode.id,
-                { ...annotationBusiness, 归属车线Id: e.currentTarget.value },
-                "更新归属车线ID",
-              )
-            }
-          />
-        </div>
-      );
+      return renderReadOnlyField(fieldId, "归属车线ID", annotationBusiness.归属车线Id);
     }
 
     return null;
@@ -1180,28 +1144,13 @@ export function EditorShell() {
             />
           </label>
 
-          <label
+          <div
             className="checkRow"
-            style={{ position: "relative", cursor: "pointer" }}
+            role="button"
+            onClick={() => window.alert("导入 CoreDraw：暂未支持")}
           >
             导入 CoreDraw
-            <input
-              type="file"
-              accept=".cdr"
-              style={{
-                position: "absolute",
-                inset: 0,
-                opacity: 0,
-                cursor: "pointer",
-              }}
-              onChange={(e) => {
-                const file = e.currentTarget.files?.[0];
-                if (!file) return;
-                commandNotImplemented(`导入 CoreDraw（${file.name}）`);
-                e.currentTarget.value = "";
-              }}
-            />
-          </label>
+          </div>
 
           <div className="viewTitle" style={{ marginTop: 10 }}>
             导出
@@ -1230,13 +1179,6 @@ export function EditorShell() {
             导出 JSON
           </div>
 
-          <div
-            className="checkRow"
-            role="button"
-            onClick={() => commandNotImplemented("导出生产图纸")}
-          >
-            导出生产图纸
-          </div>
         </MenuDropdown>
 
         <MenuDropdown label="命令">
@@ -1256,6 +1198,28 @@ export function EditorShell() {
             style={{ opacity: history.future.length === 0 ? 0.4 : 1 }}
           >
             Redo
+          </div>
+
+          <div className="viewTitle" style={{ marginTop: 10 }}>
+            选区操作
+          </div>
+          <div
+            className="checkRow"
+            role="button"
+            onClick={() => {
+              const DML_DOUBLE_TEXTS = new Set(["D", "M", "L", "双"]);
+              const ids = document.scene.order.filter((id) => {
+                const node = document.scene.nodes[id];
+                if (!node) return false;
+                if (node.business.type === "标注") return false;
+                const fo = node.fabricObject;
+                if (fo.type !== "text" && fo.type !== "textbox") return false;
+                return typeof fo.text === "string" && DML_DOUBLE_TEXTS.has(fo.text);
+              });
+              editor.edit.act({ type: "SET_SELECTION", payload: { nodeIds: ids } });
+            }}
+          >
+            选中所有DML双
           </div>
 
           <div className="viewTitle" style={{ marginTop: 10 }}>
@@ -1565,121 +1529,225 @@ export function EditorShell() {
                       : "tabContent"
                   }
                 >
-                  <div
-                    className="section"
-                    style={{
-                      flex: 1,
-                      overflow: "hidden",
-                      borderBottom: "none",
-                    }}
-                  >
-                    <div className="sectionHeader">
+                  {/* 规则列表（可滚动） */}
+                  <div style={{ flex: 1, overflow: "auto", padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div className="sectionHeader" style={{ margin: "-10px -10px 8px", borderRadius: 0 }}>
                       <span>程序化标注 (Modifiers)</span>
-                      <span
-                        className="menuItem"
-                        style={{ color: "var(--accent)" }}
-                        onClick={() => setAutoModifiers([])}
-                      >
-                        清空
-                      </span>
                     </div>
-                    <div className="sectionBody">
+
+                    {document.domain.自动修改器.map((m, idx) => {
+                        const id = m.id ?? `idx-${idx}`;
+                        const isArea = m.type === "按区域自动标注DML";
+
+                        return (
+                          <div key={id} className="modifierCard">
+                            {/* 卡片头 */}
+                            <div className="modifierCardHeader">
+                              <span className="modifierCardTag">{isArea ? "区域" : "档位"}</span>
+                              <input
+                                className="modifierCardRulesInput"
+                                placeholder="规律，如 DML"
+                                value={m.规律.join("")}
+                                onChange={(e) => {
+                                  const raw = e.currentTarget.value;
+                                  // 只允许 D M L 大小写
+                                  const filtered = raw.replace(/[^DMLdml]/g, "").toUpperCase();
+                                  patchModifier(id, (mod) => ({
+                                    ...mod,
+                                    规律: filtered.split("").filter(Boolean),
+                                  }));
+                                  e.currentTarget.value = filtered;
+                                }}
+                              />
+                              <button
+                                type="button"
+                                className="modifierCardDeleteBtn"
+                                title="删除"
+                                onClick={() => deleteModifier(id)}
+                              >×</button>
+                            </div>
+
+                            <div className="modifierCardBody">
+                              {/* 范围列表 */}
+                                {isArea
+                                  ? (m as Extract<typeof m, { type: "按区域自动标注DML" }>).范围.map(
+                                      (r, rIdx) => (
+                                        <div key={rIdx} className="modifierRangeRow">
+                                          <input
+                                            className="input"
+                                            style={{ flex: 2 }}
+                                            placeholder="区域名"
+                                            value={r.区域}
+                                            onChange={(e) =>
+                                              patchModifier(id, (mod) => {
+                                                if (mod.type !== "按区域自动标注DML") return mod;
+                                                return {
+                                                  ...mod,
+                                                  范围: mod.范围.map((item, i) =>
+                                                    i === rIdx ? { ...item, 区域: e.currentTarget.value } : item,
+                                                  ),
+                                                };
+                                              })
+                                            }
+                                          />
+                                          <input
+                                            className="input"
+                                            type="number"
+                                            style={{ flex: 1 }}
+                                            value={r.开始}
+                                            onChange={(e) =>
+                                              patchModifier(id, (mod) => {
+                                                if (mod.type !== "按区域自动标注DML") return mod;
+                                                return {
+                                                  ...mod,
+                                                  范围: mod.范围.map((item, i) =>
+                                                    i === rIdx ? { ...item, 开始: Number(e.currentTarget.value) } : item,
+                                                  ),
+                                                };
+                                              })
+                                            }
+                                          />
+                                          <span className="modifierRangeSep">–</span>
+                                          <input
+                                            className="input"
+                                            type="number"
+                                            style={{ flex: 1 }}
+                                            value={r.结束}
+                                            onChange={(e) =>
+                                              patchModifier(id, (mod) => {
+                                                if (mod.type !== "按区域自动标注DML") return mod;
+                                                return {
+                                                  ...mod,
+                                                  范围: mod.范围.map((item, i) =>
+                                                    i === rIdx ? { ...item, 结束: Number(e.currentTarget.value) } : item,
+                                                  ),
+                                                };
+                                              })
+                                            }
+                                          />
+                                          <button
+                                            type="button"
+                                            className="modifierRangeDeleteBtn"
+                                            onClick={() =>
+                                              patchModifier(id, (mod) => {
+                                                if (mod.type !== "按区域自动标注DML") return mod;
+                                                return { ...mod, 范围: mod.范围.filter((_, i) => i !== rIdx) };
+                                              })
+                                            }
+                                          >×</button>
+                                        </div>
+                                      ),
+                                    )
+                                  : (m as Extract<typeof m, { type: "按档位自动标注DML" }>).范围.map(
+                                      (r, rIdx) => (
+                                        <div key={rIdx} className="modifierRangeRow">
+                                          <input
+                                            className="input"
+                                            style={{ flex: 2 }}
+                                            placeholder="档位名"
+                                            value={r.档位}
+                                            onChange={(e) =>
+                                              patchModifier(id, (mod) => {
+                                                if (mod.type !== "按档位自动标注DML") return mod;
+                                                return {
+                                                  ...mod,
+                                                  范围: mod.范围.map((item, i) =>
+                                                    i === rIdx ? { ...item, 档位: e.currentTarget.value } : item,
+                                                  ),
+                                                };
+                                              })
+                                            }
+                                          />
+                                          <input
+                                            className="input"
+                                            type="number"
+                                            style={{ flex: 1 }}
+                                            value={r.开始}
+                                            onChange={(e) =>
+                                              patchModifier(id, (mod) => {
+                                                if (mod.type !== "按档位自动标注DML") return mod;
+                                                return {
+                                                  ...mod,
+                                                  范围: mod.范围.map((item, i) =>
+                                                    i === rIdx ? { ...item, 开始: Number(e.currentTarget.value) } : item,
+                                                  ),
+                                                };
+                                              })
+                                            }
+                                          />
+                                          <span className="modifierRangeSep">–</span>
+                                          <input
+                                            className="input"
+                                            type="number"
+                                            style={{ flex: 1 }}
+                                            value={r.结束}
+                                            onChange={(e) =>
+                                              patchModifier(id, (mod) => {
+                                                if (mod.type !== "按档位自动标注DML") return mod;
+                                                return {
+                                                  ...mod,
+                                                  范围: mod.范围.map((item, i) =>
+                                                    i === rIdx ? { ...item, 结束: Number(e.currentTarget.value) } : item,
+                                                  ),
+                                                };
+                                              })
+                                            }
+                                          />
+                                          <button
+                                            type="button"
+                                            className="modifierRangeDeleteBtn"
+                                            onClick={() =>
+                                              patchModifier(id, (mod) => {
+                                                if (mod.type !== "按档位自动标注DML") return mod;
+                                                return { ...mod, 范围: mod.范围.filter((_, i) => i !== rIdx) };
+                                              })
+                                            }
+                                          >×</button>
+                                        </div>
+                                      ),
+                                    )}
+
+                                <button
+                                  type="button"
+                                  className="modifierAddRangeBtn"
+                                  onClick={() =>
+                                    patchModifier(id, (mod) => {
+                                      if (mod.type === "按区域自动标注DML") {
+                                        return { ...mod, 范围: [...mod.范围, { 区域: "", 开始: 0, 结束: 100 }] };
+                                      }
+                                      return { ...mod, 范围: [...mod.范围, { 档位: "", 开始: 0, 结束: 100 }] };
+                                    })
+                                  }
+                                >
+                                  + 添加范围
+                                </button>
+                              </div>
+                            </div>
+                        );
+                      })}
+
+                    {/* 添加规则行（在列表内，随列表滚动） */}
+                    <div className="modifierAddRow">
+                      <select
+                        className="input"
+                        style={{ flex: 1, fontSize: 12 }}
+                        value={newModifierType}
+                        onChange={(e) => setNewModifierType(e.currentTarget.value as typeof newModifierType)}
+                      >
+                        <option value="按区域自动标注DML">按区域标注DML</option>
+                        <option value="按档位自动标注DML">按档位标注DML</option>
+                      </select>
                       <button
                         type="button"
                         className="btn btnPrimary"
+                        style={{ flexShrink: 0 }}
                         onClick={addModifier}
                       >
-                        + 添加规则
+                        + 添加
                       </button>
-
-                      {document.domain.自动修改器.length === 0 ? (
-                        <div className="muted" style={{ marginTop: 10 }}>
-                          暂无规则
-                        </div>
-                      ) : (
-                        <div
-                          style={{
-                            marginTop: 10,
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 10,
-                          }}
-                        >
-                          {document.domain.自动修改器.map((m, idx) => {
-                            const id = m.id ?? `idx-${idx}`;
-                            const enabled = m.启用 ?? true;
-                            return (
-                              <div
-                                key={id}
-                                style={{
-                                  border: "1px solid var(--border)",
-                                  borderRadius: 12,
-                                  padding: 10,
-                                  background: "#fff",
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    gap: 10,
-                                    alignItems: "flex-start",
-                                  }}
-                                >
-                                  <div>
-                                    <div style={{ fontWeight: 800 }}>
-                                      {m.type}
-                                    </div>
-                                    <div className="muted">
-                                      {id.slice(0, 8)}
-                                    </div>
-                                  </div>
-                                  <label className="checkRow">
-                                    <input
-                                      type="checkbox"
-                                      checked={enabled}
-                                      onChange={() => toggleModifierEnabled(id)}
-                                    />
-                                    启用
-                                  </label>
-                                </div>
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    gap: 8,
-                                    marginTop: 8,
-                                    flexWrap: "wrap",
-                                  }}
-                                >
-                                  <button
-                                    type="button"
-                                    className="btn"
-                                    onClick={() => moveModifier(id, -1)}
-                                  >
-                                    上移
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="btn"
-                                    onClick={() => moveModifier(id, 1)}
-                                  >
-                                    下移
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="btn btnDanger"
-                                    onClick={() => deleteModifier(id)}
-                                  >
-                                    删除
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
                     </div>
                   </div>
+
                 </div>
               </>
             ) : null}
