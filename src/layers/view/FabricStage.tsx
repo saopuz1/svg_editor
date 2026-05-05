@@ -1,11 +1,24 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { ActiveSelection, Canvas, FabricObject, Shadow, StaticCanvas } from 'fabric';
-import type { Editor } from '../../kernel/createEditor';
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  ActiveSelection,
+  Canvas,
+  FabricObject,
+  Shadow,
+  StaticCanvas,
+} from "fabric";
+import type { Editor } from "../../kernel/createEditor";
 import {
   bindFabricCoreEvents,
   bindFabricToolEvents,
-} from '../../rendering/fabric/fabricEventBridge';
-import { buildDocumentFromSvgImport } from '../../rendering/fabric/fabricImportExport';
+} from "../../rendering/fabric/fabricEventBridge";
+import { buildDocumentFromSvgImport } from "../../rendering/fabric/fabricImportExport";
 import {
   applyNodeToObject,
   applyAnnotationBackgroundToTextNode,
@@ -13,12 +26,12 @@ import {
   createFabricObject,
   getAnnotationBackgroundShape,
   setObjectNodeId,
-} from '../../rendering/fabric/fabricProjection';
-import type { DocumentState, NodeId } from '../data/types';
-import { serializeDocument } from '../data/serialization';
-import { createCommand } from '../edit/commands';
-import type { ToolId } from '../edit/tools';
-import type { ViewState } from './viewState';
+} from "../../rendering/fabric/fabricProjection";
+import type { DocumentState, NodeId } from "../data/types";
+import { serializeDocument } from "../data/serialization";
+import { createCommand } from "../edit/commands";
+import type { ToolId } from "../edit/tools";
+import type { ViewState } from "./viewState";
 
 export interface FabricStageApi {
   exportSvg(): string;
@@ -27,7 +40,7 @@ export interface FabricStageApi {
 }
 
 const SELECTED_SHADOW = new Shadow({
-  color: 'rgba(37, 99, 235, 0.32)',
+  color: "rgba(37, 99, 235, 0.32)",
   blur: 18,
   offsetX: 0,
   offsetY: 0,
@@ -36,10 +49,10 @@ const SELECTED_SHADOW = new Shadow({
 function applySelectionAppearance(obj: FabricObject, selected: boolean) {
   obj.set({
     shadow: selected ? SELECTED_SHADOW : null,
-    borderColor: '#2563eb',
-    cornerColor: '#ffffff',
-    cornerStrokeColor: '#2563eb',
-    cornerStyle: 'circle',
+    borderColor: "#2563eb",
+    cornerColor: "#ffffff",
+    cornerStrokeColor: "#2563eb",
+    cornerStyle: "circle",
     transparentCorners: false,
     borderScaleFactor: 1.5,
     cornerSize: 10,
@@ -49,10 +62,10 @@ function applySelectionAppearance(obj: FabricObject, selected: boolean) {
 
 function applyActiveSelectionAppearance(selection: ActiveSelection) {
   selection.set({
-    borderColor: '#2563eb',
-    cornerColor: '#ffffff',
-    cornerStrokeColor: '#2563eb',
-    cornerStyle: 'circle',
+    borderColor: "#2563eb",
+    cornerColor: "#ffffff",
+    cornerStrokeColor: "#2563eb",
+    cornerStyle: "circle",
     transparentCorners: false,
     borderScaleFactor: 1.5,
     cornerSize: 10,
@@ -65,7 +78,9 @@ function getCanvasSelectionIds(canvas: Canvas) {
     .getActiveObjects()
     .map((obj) => {
       const record = obj as FabricObject & { __editorNodeId?: unknown };
-      return typeof record.__editorNodeId === 'string' ? record.__editorNodeId : null;
+      return typeof record.__editorNodeId === "string"
+        ? record.__editorNodeId
+        : null;
     })
     .filter((id): id is string => Boolean(id));
 }
@@ -80,9 +95,9 @@ function asMouseEvent(evt: Event | undefined): MouseEvent | null {
 }
 
 function buildExportSvg(document: DocumentState, viewState: ViewState) {
-  const exportEl = globalThis.document.createElement('canvas');
+  const exportEl = globalThis.document.createElement("canvas");
   const exportCanvas = new StaticCanvas(exportEl, {
-    backgroundColor: document.canvas.backgroundColor || '#ffffff',
+    backgroundColor: document.canvas.backgroundColor || "#ffffff",
     preserveObjectStacking: true,
   });
 
@@ -97,10 +112,19 @@ function buildExportSvg(document: DocumentState, viewState: ViewState) {
 
     const obj = createFabricObject(node);
     setObjectNodeId(obj, id);
-    applyNodeToObject(node, obj, viewState, undefined, document.domain.标注样式);
+    applyNodeToObject(
+      node,
+      obj,
+      viewState,
+      undefined,
+      document.domain.标注样式,
+    );
 
-    if (obj.type === 'textbox' || obj.type === 'text') {
-      const shape = getAnnotationBackgroundShape(node, document.domain.标注样式);
+    if (obj.type === "textbox" || obj.type === "text") {
+      const shape = getAnnotationBackgroundShape(
+        node,
+        document.domain.标注样式,
+      );
       if (shape) {
         const background = createAnnotationBackgroundObject(shape, {
           excludeFromExport: false,
@@ -135,18 +159,25 @@ export const FabricStage = forwardRef<
     businessCommandActive?: boolean;
   }
 >(function FabricStage(
-  { editor, document, selection, activeToolId, viewState, businessCommandActive = false },
+  {
+    editor,
+    document,
+    selection,
+    activeToolId,
+    viewState,
+    businessCommandActive = false,
+  },
   ref,
 ) {
   const canvasElRef = useRef<HTMLCanvasElement | null>(null);
   const fabricRef = useRef<Canvas | null>(null);
   const objectMapRef = useRef<Map<NodeId, FabricObject>>(new Map());
   const backgroundMapRef = useRef<Map<NodeId, FabricObject>>(new Map());
-  const lastSelectionRef = useRef<string>('');
+  const lastSelectionRef = useRef<string>("");
   const suppressSelectionSyncRef = useRef(false);
-  const viewportTransformRef = useRef<[number, number, number, number, number, number]>([
-    1, 0, 0, 1, 0, 0,
-  ]);
+  const viewportTransformRef = useRef<
+    [number, number, number, number, number, number]
+  >([1, 0, 0, 1, 0, 0]);
   const panningRef = useRef<{
     active: boolean;
     lastX: number;
@@ -162,7 +193,7 @@ export const FabricStage = forwardRef<
     lastY: 0,
     selection: true,
     skipTargetFind: false,
-    defaultCursor: 'default',
+    defaultCursor: "default",
     hoverCursor: null,
     moveCursor: null,
   });
@@ -183,8 +214,14 @@ export const FabricStage = forwardRef<
         return serializeDocument(editor.data.getState());
       },
       async importSvg(svg: string) {
-        const next = await buildDocumentFromSvgImport(editor.data.getState(), svg);
-        editor.edit.execute(createCommand('加载文档', { document: next }), '导入 SVG');
+        const next = await buildDocumentFromSvgImport(
+          editor.data.getState(),
+          svg,
+        );
+        editor.edit.execute(
+          createCommand("加载文档", { document: next }),
+          "导入 SVG",
+        );
       },
     }),
     [document, editor, viewState],
@@ -194,16 +231,24 @@ export const FabricStage = forwardRef<
     if (!canvasElRef.current) return;
 
     const canvas = new Canvas(canvasElRef.current, {
-      backgroundColor: '#ffffff',
+      backgroundColor: "#ffffff",
       preserveObjectStacking: true,
       selection: !businessCommandActive,
-      selectionColor: 'rgba(37, 99, 235, 0.08)',
-      selectionBorderColor: 'rgba(37, 99, 235, 0.9)',
+      selectionColor: "rgba(37, 99, 235, 0.08)",
+      selectionBorderColor: "rgba(37, 99, 235, 0.9)",
       selectionLineWidth: 1.5,
       skipTargetFind: businessCommandActive,
     });
 
+    // setDimensions 只放大了 backstore（canvas.width/height 属性乘以 DPR），
+    // 但不会自动设置 CSS 显示尺寸。若不补设，浏览器会用放大后的像素值决定
+    // 显示大小（例如 2400px），导致画布看起来模糊或溢出。
+    // 需要用 cssOnly 选项把 CSS 尺寸固定到逻辑尺寸（W×H px）。
     canvas.setDimensions(canvasSize);
+    canvas.setDimensions(
+      { width: `${canvasSize.width}px`, height: `${canvasSize.height}px` },
+      { cssOnly: true },
+    );
     canvas.setViewportTransform([...viewportTransformRef.current]);
     canvas.uniformScaling = false;
     fabricRef.current = canvas;
@@ -237,10 +282,10 @@ export const FabricStage = forwardRef<
       };
       canvas.selection = false;
       canvas.skipTargetFind = true;
-      canvas.defaultCursor = 'grabbing';
-      canvas.hoverCursor = 'grabbing';
-      canvas.moveCursor = 'grabbing';
-      canvas.setCursor('grabbing');
+      canvas.defaultCursor = "grabbing";
+      canvas.hoverCursor = "grabbing";
+      canvas.moveCursor = "grabbing";
+      canvas.setCursor("grabbing");
     };
 
     const handleMouseMove = (evt: { e?: Event }) => {
@@ -289,20 +334,26 @@ export const FabricStage = forwardRef<
       evt.preventDefault();
     };
 
-    canvas.on('mouse:down', handleMouseDown);
-    canvas.on('mouse:move', handleMouseMove);
-    canvas.on('mouse:up', stopPanning);
-    window.addEventListener('mouseup', stopPanning);
-    canvas.upperCanvasEl.addEventListener('mousedown', preventMiddleAutoScroll);
-    canvas.upperCanvasEl.addEventListener('auxclick', preventMiddleAutoScroll);
+    canvas.on("mouse:down", handleMouseDown);
+    canvas.on("mouse:move", handleMouseMove);
+    canvas.on("mouse:up", stopPanning);
+    window.addEventListener("mouseup", stopPanning);
+    canvas.upperCanvasEl.addEventListener("mousedown", preventMiddleAutoScroll);
+    canvas.upperCanvasEl.addEventListener("auxclick", preventMiddleAutoScroll);
 
     return () => {
-      canvas.off('mouse:down', handleMouseDown);
-      canvas.off('mouse:move', handleMouseMove);
-      canvas.off('mouse:up', stopPanning);
-      window.removeEventListener('mouseup', stopPanning);
-      canvas.upperCanvasEl.removeEventListener('mousedown', preventMiddleAutoScroll);
-      canvas.upperCanvasEl.removeEventListener('auxclick', preventMiddleAutoScroll);
+      canvas.off("mouse:down", handleMouseDown);
+      canvas.off("mouse:move", handleMouseMove);
+      canvas.off("mouse:up", stopPanning);
+      window.removeEventListener("mouseup", stopPanning);
+      canvas.upperCanvasEl.removeEventListener(
+        "mousedown",
+        preventMiddleAutoScroll,
+      );
+      canvas.upperCanvasEl.removeEventListener(
+        "auxclick",
+        preventMiddleAutoScroll,
+      );
       unbindCoreEvents();
       canvas.dispose();
       fabricRef.current = null;
@@ -316,9 +367,9 @@ export const FabricStage = forwardRef<
     if (!canvas) return;
 
     const activeObject = canvas.getActiveObject();
-    const selectionKey = selection.join(',');
+    const selectionKey = selection.join(",");
     const canvasSelectionIds = getCanvasSelectionIds(canvas);
-    const canvasSelectionKey = canvasSelectionIds.join(',');
+    const canvasSelectionKey = canvasSelectionIds.join(",");
     const shouldRebuildSelection = selectionKey !== canvasSelectionKey;
 
     if (shouldRebuildSelection) {
@@ -328,6 +379,11 @@ export const FabricStage = forwardRef<
     }
 
     canvas.setDimensions(canvasSize);
+    // 同步 CSS 尺寸到逻辑尺寸，防止 retina 放大后画布显示模糊
+    canvas.setDimensions(
+      { width: `${canvasSize.width}px`, height: `${canvasSize.height}px` },
+      { cssOnly: true },
+    );
     canvas.set({ backgroundColor: document.canvas.backgroundColor });
     canvas.setViewportTransform([...viewportTransformRef.current]);
 
@@ -344,7 +400,11 @@ export const FabricStage = forwardRef<
 
     for (const [id, obj] of backgroundMap.entries()) {
       const node = document.scene.nodes[id];
-      if (!node || (node.fabricObject.type !== 'textbox' && node.fabricObject.type !== 'text')) {
+      if (
+        !node ||
+        (node.fabricObject.type !== "textbox" &&
+          node.fabricObject.type !== "text")
+      ) {
         canvas.remove(obj);
         backgroundMap.delete(id);
       }
@@ -360,15 +420,27 @@ export const FabricStage = forwardRef<
           selectedIds.has(id) &&
           activeObject instanceof ActiveSelection &&
           !shouldRebuildSelection;
-        applyNodeToObject(node, existing, viewState, {
-          preserveTransform: preserveGroupedTransform,
-        }, document.domain.标注样式);
+        applyNodeToObject(
+          node,
+          existing,
+          viewState,
+          {
+            preserveTransform: preserveGroupedTransform,
+          },
+          document.domain.标注样式,
+        );
         applySelectionAppearance(existing, selectedIds.has(id));
         existing.setCoords();
       } else {
         const obj = createFabricObject(node);
         setObjectNodeId(obj, id);
-        applyNodeToObject(node, obj, viewState, undefined, document.domain.标注样式);
+        applyNodeToObject(
+          node,
+          obj,
+          viewState,
+          undefined,
+          document.domain.标注样式,
+        );
         applySelectionAppearance(obj, selectedIds.has(id));
         obj.setCoords();
         objectMap.set(id, obj);
@@ -376,10 +448,7 @@ export const FabricStage = forwardRef<
       }
 
       const currentObject = objectMap.get(id);
-      if (
-        currentObject?.type === 'textbox' ||
-        currentObject?.type === 'text'
-      ) {
+      if (currentObject?.type === "textbox" || currentObject?.type === "text") {
         const desiredShape = getAnnotationBackgroundShape(
           node,
           document.domain.标注样式,
@@ -394,8 +463,8 @@ export const FabricStage = forwardRef<
         } else {
           const currentType = existingBackground?.type;
           const matchesShape =
-            (desiredShape === 'rect' && currentType === 'rect') ||
-            (desiredShape === 'ellipse' && currentType === 'ellipse');
+            (desiredShape === "rect" && currentType === "rect") ||
+            (desiredShape === "ellipse" && currentType === "ellipse");
           const background =
             existingBackground && matchesShape
               ? existingBackground
@@ -414,7 +483,8 @@ export const FabricStage = forwardRef<
             currentObject as never,
             background,
             document.domain.标注样式,
-            (currentObject as FabricObject & { visible?: boolean }).visible !== false,
+            (currentObject as FabricObject & { visible?: boolean }).visible !==
+              false,
           );
           background.setCoords();
         }
@@ -448,7 +518,8 @@ export const FabricStage = forwardRef<
         .map((id) => objectMap.get(id))
         .filter(
           (o): o is FabricObject =>
-            Boolean(o) && (o as FabricObject & { visible?: boolean }).visible !== false,
+            Boolean(o) &&
+            (o as FabricObject & { visible?: boolean }).visible !== false,
         );
 
       if (selected.length === 1) {
@@ -480,7 +551,7 @@ export const FabricStage = forwardRef<
   void ready;
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div style={{ position: "relative" }}>
       <canvas ref={canvasElRef} className="fabricCanvas" />
     </div>
   );

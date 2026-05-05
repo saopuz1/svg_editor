@@ -51,7 +51,10 @@ function createPreviewLabelNode(spec: PreviewLabelNodeSpec): EditorNode {
     locked: true,
     hidden: false,
     zIndex: 0,
-    business: { type: "非标注" },
+    // business 必须设为「标注/车线编号」而非「非标注」。
+    // isNodeVisible 只对 business.type === "标注" 的节点读 viewState.标注文本，
+    // 「非标注」会绕过视图开关永远可见，导致取消勾选「车线编号」后标注仍然显示。
+    business: { type: "标注", 字段: "车线编号", 归属车线Id: spec.lineNodeId },
     fabricObject: {
       type: "textbox",
       left: spec.position.x,

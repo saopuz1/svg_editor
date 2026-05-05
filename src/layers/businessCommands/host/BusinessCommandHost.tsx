@@ -1,24 +1,46 @@
-import { useEffect, useMemo, useState } from 'react';
-import { BusinessCommandDialog } from '../../../components/BusinessCommandDialog';
-import type { DocumentState } from '../../data/types';
+import { useEffect, useMemo, useState } from "react";
+import { BusinessCommandDialog } from "../../../components/BusinessCommandDialog";
+import type { DocumentState } from "../../data/types";
 import {
   EXTRACT_CARLINE_AREA_PRESETS,
   type ExtractCarlineSession,
-} from '../businessCommandTypes';
-import { applyExtractCarlineSession } from '../extractCarlinePreview';
+} from "../businessCommandTypes";
+import { applyExtractCarlineSession } from "../extractCarlinePreview";
 import {
   commitExtractCarlineCurrentArea,
   createExtractCarlineSession,
   toggleCurrentExtractCarlineLines,
   updateExtractCarlineCurrentDraft,
   validateExtractCarlineAreaName,
-} from '../extractCarlineSession';
-import { BusinessCommandSvgSurface } from '../surfaces/BusinessCommandSvgSurface';
+} from "../extractCarlineSession";
+import {
+  BusinessCommandSvgSurface,
+  type LineHighlightInfo,
+  type SurfaceLabelItem,
+} from "../surfaces/BusinessCommandSvgSurface";
+import { MarkGearHost } from "./MarkGearHost";
+
+const AREA_COLORS = [
+  "#2563eb",
+  "#0f766e",
+  "#b45309",
+  "#7c3aed",
+  "#db2777",
+  "#059669",
+  "#d97706",
+  "#6366f1",
+  "#be185d",
+  "#16a34a",
+];
+
+function getAreaColor(areaIndex: number): string {
+  return AREA_COLORS[areaIndex % AREA_COLORS.length];
+}
 
 const EXTRACT_CARLINE_STEPS = [
   {
-    title: '当前区域',
-    description: '选择区域、设置车线长度，并直接在画布上刷选当前区域的线条。',
+    title: "当前区域",
+    description: "选择区域、设置车线长度，并直接在画布上刷选当前区域的线条。",
   },
 ] as const;
 
@@ -31,25 +53,25 @@ export function BusinessCommandHost({
   onCommit,
 }: {
   open: boolean;
-  kind: 'extract-carline' | null;
+  kind: "extract-carline" | "mark-gear" | null;
   document: DocumentState;
   svgMarkup: string;
   onClose: () => void;
   onCommit: (next: DocumentState) => void;
 }) {
   const [session, setSession] = useState<ExtractCarlineSession | null>(null);
-  const [validationError, setValidationError] = useState('');
+  const [validationError, setValidationError] = useState("");
   const [showExitConfirm, setShowExitConfirm] = useState(false);
 
   useEffect(() => {
-    if (!open || kind !== 'extract-carline') {
+    if (!open || kind !== "extract-carline") {
       setSession(null);
-      setValidationError('');
+      setValidationError("");
       setShowExitConfirm(false);
       return;
     }
     setSession(createExtractCarlineSession());
-    setValidationError('');
+    setValidationError("");
     setShowExitConfirm(false);
   }, [kind, open]);
 
@@ -60,51 +82,45 @@ export function BusinessCommandHost({
           presetId: currentDraft.presetId,
         })
       : null;
-  const currentValidationError = validationError || liveValidationError || '';
+  const currentValidationError = validationError || liveValidationError || "";
   const hasAnyArea =
     (session?.completedAreas.length ?? 0) > 0 ||
     (currentDraft?.selectedLines.length ?? 0) > 0;
   const canCommitNextArea =
     (currentDraft?.selectedLines.length ?? 0) > 0 && !currentValidationError;
 
-  const selectPreset = (presetId: ExtractCarlineSession['currentDraft']['presetId']) => {
+  const selectPreset = (
+    presetId: ExtractCarlineSession["currentDraft"]["presetId"],
+  ) => {
     if (!session) return;
-    const preset = EXTRACT_CARLINE_AREA_PRESETS.find((item) => item.id === presetId);
+    const preset = EXTRACT_CARLINE_AREA_PRESETS.find(
+      (item) => item.id === presetId,
+    );
     if (!preset) return;
     setSession(
       updateExtractCarlineCurrentDraft(session, {
         presetId,
         areaName:
-          presetId === '自定义'
-            ? session.currentDraft.presetId === '自定义'
+          presetId === "自定义"
+            ? session.currentDraft.presetId === "自定义"
               ? session.currentDraft.areaName
-              : ''
+              : ""
             : preset.areaName,
         carlineLength:
-          presetId === '自定义'
-            ? session.currentDraft.presetId === '自定义'
+          presetId === "自定义"
+            ? session.currentDraft.presetId === "自定义"
               ? session.currentDraft.carlineLength
               : preset.carlineLength
             : preset.carlineLength,
       }),
     );
-    setValidationError('');
+    setValidationError("");
   };
 
   const bodyContent = useMemo(() => {
     if (!session || !currentDraft) return undefined;
     return (
       <div className="extractCarlinePanel">
-        <div className="extractCarlinePanelHeader">
-          <div>
-            <div className="businessDialogBodyLabel">
-              第 1 步 / 共 {EXTRACT_CARLINE_STEPS.length} 步
-            </div>
-            <div className="extractCarlinePanelTitle">{EXTRACT_CARLINE_STEPS[0].title}</div>
-          </div>
-          <div className="extractCarlinePanelSubtitle">选择区域后直接在画布上勾选线条</div>
-        </div>
-
         <div className="businessDialogSection extractCarlinePanelSection">
           <div className="extractCarlineFormGrid">
             <div className="row">
@@ -114,14 +130,15 @@ export function BusinessCommandHost({
                 value={currentDraft.presetId}
                 onChange={(event) =>
                   selectPreset(
-                    event.currentTarget.value as ExtractCarlineSession['currentDraft']['presetId'],
+                    event.currentTarget
+                      .value as ExtractCarlineSession["currentDraft"]["presetId"],
                   )
                 }
               >
                 {EXTRACT_CARLINE_AREA_PRESETS.map((preset) => (
                   <option key={preset.id} value={preset.id}>
-                    {preset.id === '自定义'
-                      ? '自定义区域'
+                    {preset.id === "自定义"
+                      ? "自定义区域"
                       : `${preset.areaName}（车线长度 ${preset.carlineLength}）`}
                   </option>
                 ))}
@@ -151,14 +168,14 @@ export function BusinessCommandHost({
             <input
               className="input"
               value={currentDraft.areaName}
-              disabled={currentDraft.presetId !== '自定义'}
+              disabled={currentDraft.presetId !== "自定义"}
               onChange={(event) => {
                 setSession(
                   updateExtractCarlineCurrentDraft(session, {
                     areaName: event.currentTarget.value,
                   }),
                 );
-                setValidationError('');
+                setValidationError("");
               }}
               placeholder="请输入区域名称"
             />
@@ -173,15 +190,21 @@ export function BusinessCommandHost({
           <div className="extractCarlineSummaryGrid">
             <div className="extractCarlineSummaryCard">
               <div className="businessDialogMetaLabel">当前区域</div>
-              <div className="businessDialogMetaValue">{currentDraft.areaName || '-'}</div>
+              <div className="businessDialogMetaValue">
+                {currentDraft.areaName || "-"}
+              </div>
             </div>
             <div className="extractCarlineSummaryCard">
               <div className="businessDialogMetaLabel">车线长度</div>
-              <div className="businessDialogMetaValue">{currentDraft.carlineLength}</div>
+              <div className="businessDialogMetaValue">
+                {currentDraft.carlineLength}
+              </div>
             </div>
             <div className="extractCarlineSummaryCard">
               <div className="businessDialogMetaLabel">当前已选</div>
-              <div className="businessDialogMetaValue">{currentDraft.selectedLines.length}</div>
+              <div className="businessDialogMetaValue">
+                {currentDraft.selectedLines.length}
+              </div>
             </div>
           </div>
 
@@ -196,7 +219,10 @@ export function BusinessCommandHost({
             <div className="businessDialogSelectionList extractCarlineSelectionList">
               {currentDraft.selectedLines.length ? (
                 currentDraft.selectedLines.map((line, index) => (
-                  <div key={line.nodeId} className="businessDialogSelectionItem extractCarlineSelectionItem">
+                  <div
+                    key={line.nodeId}
+                    className="businessDialogSelectionItem extractCarlineSelectionItem"
+                  >
                     <span>{index + 1}</span>
                     <span>{line.nodeId}</span>
                   </div>
@@ -228,11 +254,7 @@ export function BusinessCommandHost({
         </div>
       </div>
     );
-  }, [
-    currentDraft,
-    currentValidationError,
-    session,
-  ]);
+  }, [currentDraft, currentValidationError, session]);
 
   const footerContent = useMemo(() => {
     if (!session) return undefined;
@@ -242,14 +264,19 @@ export function BusinessCommandHost({
           <span className="muted">当前区域与刷线为同一步。</span>
         </div>
         <div className="businessDialogFooterRight">
-          <button type="button" className="btn" onClick={() => setShowExitConfirm(true)}>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setShowExitConfirm(true)}
+          >
             退出
           </button>
           <button
             type="button"
             className="btn"
             onClick={() => {
-              const hasCurrentSelection = session.currentDraft.selectedLines.length > 0;
+              const hasCurrentSelection =
+                session.currentDraft.selectedLines.length > 0;
               const result = hasCurrentSelection
                 ? commitExtractCarlineCurrentArea(session)
                 : { session, validationError: null };
@@ -275,7 +302,7 @@ export function BusinessCommandHost({
             onClick={() => {
               const result = commitExtractCarlineCurrentArea(session);
               setSession(result.session);
-              setValidationError(result.validationError ?? '');
+              setValidationError(result.validationError ?? "");
             }}
             disabled={!canCommitNextArea}
           >
@@ -286,14 +313,90 @@ export function BusinessCommandHost({
     );
   }, [canCommitNextArea, document, hasAnyArea, onCommit, session]);
 
-  if (!open || kind !== 'extract-carline' || !session) return null;
+  // ── ExtractCarline Surface props ────────────────────────────────────────────
+
+  const extractCarlineCandidateNodeIds = useMemo<ReadonlySet<string>>(() => {
+    // 车线提取：所有 line/path 节点均为候选
+    const ids = new Set<string>();
+    if (session) {
+      for (const id of document.scene.order) {
+        const node = document.scene.nodes[id];
+        if (
+          node &&
+          (node.fabricObject.type === "line" ||
+            node.fabricObject.type === "path")
+        ) {
+          ids.add(node.id);
+        }
+      }
+    }
+    return ids;
+  }, [session, document]);
+
+  const extractCarlineHighlightMap = useMemo<
+    ReadonlyMap<string, LineHighlightInfo>
+  >(() => {
+    const map = new Map<string, LineHighlightInfo>();
+    if (!session) return map;
+    session.completedAreas.forEach((area, index) => {
+      const color = getAreaColor(index);
+      area.selectedLines.forEach((line) => {
+        map.set(line.nodeId, { color, isUsed: true });
+      });
+    });
+    const currentColor = getAreaColor(session.completedAreas.length);
+    session.currentDraft.selectedLines.forEach((line) => {
+      map.set(line.nodeId, { color: currentColor, isUsed: false });
+    });
+    return map;
+  }, [session]);
+
+  const extractCarlinePreviewLabels = useMemo<SurfaceLabelItem[]>(() => {
+    if (!session) return [];
+    const completed = session.completedAreas.flatMap((area, index) => {
+      const color = getAreaColor(index);
+      return area.selectedLines.map((line, i) => ({
+        key: `${area.areaName}-${line.nodeId}`,
+        text: String(i + 1),
+        x: line.hitPoint.x,
+        y: line.hitPoint.y,
+        color,
+      }));
+    });
+    const currentColor = getAreaColor(session.completedAreas.length);
+    const current = session.currentDraft.selectedLines.map((line, i) => ({
+      key: `${session.currentDraft.areaName}-${line.nodeId}`,
+      text: String(i + 1),
+      x: line.hitPoint.x,
+      y: line.hitPoint.y,
+      color: currentColor,
+    }));
+    return [...completed, ...current];
+  }, [session]);
+
+  // mark-gear 由独立组件处理
+  if (open && kind === "mark-gear") {
+    return (
+      <MarkGearHost
+        open={open}
+        document={document}
+        svgMarkup={svgMarkup}
+        onClose={onClose}
+        onCommit={onCommit}
+      />
+    );
+  }
+
+  if (!open || kind !== "extract-carline" || !session) return null;
 
   return (
     <>
       <BusinessCommandSvgSurface
         document={document}
         svgMarkup={svgMarkup}
-        session={session}
+        candidateNodeIds={extractCarlineCandidateNodeIds}
+        lineHighlightMap={extractCarlineHighlightMap}
+        previewLabels={extractCarlinePreviewLabels}
         onToggleLine={(nodeId, markerPos) => {
           setSession((prev) =>
             prev

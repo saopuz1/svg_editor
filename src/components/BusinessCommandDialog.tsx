@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 export interface BusinessCommandStep {
   title: string;
@@ -12,7 +12,7 @@ type DialogFrame = {
   height: number;
 };
 
-type ResizeDirection = 'top' | 'right' | 'bottom' | 'left';
+type ResizeDirection = "top" | "right" | "bottom" | "left";
 
 const DIALOG_MARGIN = 12;
 const DIALOG_DEFAULT_WIDTH = 460;
@@ -90,14 +90,14 @@ export function BusinessCommandDialog({
     if (!open) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         event.preventDefault();
         onRequestClose();
       }
     };
 
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, onRequestClose]);
 
   useEffect(() => {
@@ -105,8 +105,8 @@ export function BusinessCommandDialog({
       setFrame((prev) => clampFrame(prev));
     };
 
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, []);
 
   if (!open) return null;
@@ -115,7 +115,7 @@ export function BusinessCommandDialog({
   const isFirstStep = currentStep === 0;
   const isLastStep = currentStep === steps.length - 1;
   const startDrag = (event: React.MouseEvent<HTMLDivElement>) => {
-    if ((event.target as HTMLElement).closest('button')) return;
+    if ((event.target as HTMLElement).closest("button")) return;
 
     const dialog = dialogRef.current;
     if (!dialog) return;
@@ -139,16 +139,17 @@ export function BusinessCommandDialog({
     };
 
     const onMouseUp = () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
     };
 
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
   };
 
   const startResize =
-    (direction: ResizeDirection) => (event: React.MouseEvent<HTMLDivElement>) => {
+    (direction: ResizeDirection) =>
+    (event: React.MouseEvent<HTMLDivElement>) => {
       event.preventDefault();
       event.stopPropagation();
 
@@ -161,26 +162,26 @@ export function BusinessCommandDialog({
         const deltaY = moveEvent.clientY - startY;
         let nextFrame: DialogFrame = { ...origin };
 
-        if (direction === 'right') {
+        if (direction === "right") {
           nextFrame.width = origin.width + deltaX;
         }
-        if (direction === 'bottom') {
+        if (direction === "bottom") {
           nextFrame.height = origin.height + deltaY;
         }
-        if (direction === 'left') {
+        if (direction === "left") {
           nextFrame.width = origin.width - deltaX;
           nextFrame.x = origin.x + deltaX;
         }
-        if (direction === 'top') {
+        if (direction === "top") {
           nextFrame.height = origin.height - deltaY;
           nextFrame.y = origin.y + deltaY;
         }
 
-        if (direction === 'left' && nextFrame.width < DIALOG_MIN_WIDTH) {
+        if (direction === "left" && nextFrame.width < DIALOG_MIN_WIDTH) {
           nextFrame.width = DIALOG_MIN_WIDTH;
           nextFrame.x = origin.x + (origin.width - DIALOG_MIN_WIDTH);
         }
-        if (direction === 'top' && nextFrame.height < DIALOG_MIN_HEIGHT) {
+        if (direction === "top" && nextFrame.height < DIALOG_MIN_HEIGHT) {
           nextFrame.height = DIALOG_MIN_HEIGHT;
           nextFrame.y = origin.y + (origin.height - DIALOG_MIN_HEIGHT);
         }
@@ -191,25 +192,25 @@ export function BusinessCommandDialog({
         nextFrame.width = Math.min(nextFrame.width, maxWidth);
         nextFrame.height = Math.min(nextFrame.height, maxHeight);
 
-        if (direction === 'right') {
+        if (direction === "right") {
           nextFrame.width = Math.min(
             Math.max(DIALOG_MIN_WIDTH, nextFrame.width),
             window.innerWidth - origin.x - DIALOG_MARGIN,
           );
         }
-        if (direction === 'bottom') {
+        if (direction === "bottom") {
           nextFrame.height = Math.min(
             Math.max(DIALOG_MIN_HEIGHT, nextFrame.height),
             window.innerHeight - origin.y - DIALOG_MARGIN,
           );
         }
-        if (direction === 'left') {
+        if (direction === "left") {
           nextFrame.x = Math.max(DIALOG_MARGIN, nextFrame.x);
           nextFrame.width = origin.x + origin.width - nextFrame.x;
           nextFrame.width = Math.max(DIALOG_MIN_WIDTH, nextFrame.width);
           nextFrame.x = origin.x + origin.width - nextFrame.width;
         }
-        if (direction === 'top') {
+        if (direction === "top") {
           nextFrame.y = Math.max(DIALOG_MARGIN, nextFrame.y);
           nextFrame.height = origin.y + origin.height - nextFrame.y;
           nextFrame.height = Math.max(DIALOG_MIN_HEIGHT, nextFrame.height);
@@ -220,12 +221,12 @@ export function BusinessCommandDialog({
       };
 
       const onMouseUp = () => {
-        window.removeEventListener('mousemove', onMouseMove);
-        window.removeEventListener('mouseup', onMouseUp);
+        window.removeEventListener("mousemove", onMouseMove);
+        window.removeEventListener("mouseup", onMouseUp);
       };
 
-      window.addEventListener('mousemove', onMouseMove);
-      window.addEventListener('mouseup', onMouseUp);
+      window.addEventListener("mousemove", onMouseMove);
+      window.addEventListener("mouseup", onMouseUp);
     };
 
   return (
@@ -245,19 +246,19 @@ export function BusinessCommandDialog({
       >
         <div
           className="businessDialogResizeHandle businessDialogResizeHandleTop"
-          onMouseDown={startResize('top')}
+          onMouseDown={startResize("top")}
         />
         <div
           className="businessDialogResizeHandle businessDialogResizeHandleRight"
-          onMouseDown={startResize('right')}
+          onMouseDown={startResize("right")}
         />
         <div
           className="businessDialogResizeHandle businessDialogResizeHandleBottom"
-          onMouseDown={startResize('bottom')}
+          onMouseDown={startResize("bottom")}
         />
         <div
           className="businessDialogResizeHandle businessDialogResizeHandleLeft"
-          onMouseDown={startResize('left')}
+          onMouseDown={startResize("left")}
         />
         <div
           className="businessDialogHeader businessDialogDragHandle"
@@ -265,7 +266,9 @@ export function BusinessCommandDialog({
         >
           <div>
             <div className="businessDialogTitle">{title}</div>
-            {summary ? <div className="businessDialogSummary">{summary}</div> : null}
+            {summary ? (
+              <div className="businessDialogSummary">{summary}</div>
+            ) : null}
           </div>
           <button
             type="button"
@@ -278,21 +281,27 @@ export function BusinessCommandDialog({
           </button>
         </div>
 
-        <div className="businessDialogSteps" aria-label="流程步骤">
-          {steps.map((item, index) => {
-            const state =
-              index < currentStep ? 'done' : index === currentStep ? 'active' : 'idle';
-            return (
-              <div
-                key={`${title}-${item.title}`}
-                className={`businessDialogStep businessDialogStep${state[0].toUpperCase()}${state.slice(1)}`}
-              >
-                <div className="businessDialogStepIndex">{index + 1}</div>
-                <div className="businessDialogStepText">{item.title}</div>
-              </div>
-            );
-          })}
-        </div>
+        {steps.length > 1 && (
+          <div className="businessDialogSteps" aria-label="流程步骤">
+            {steps.map((item, index) => {
+              const state =
+                index < currentStep
+                  ? "done"
+                  : index === currentStep
+                    ? "active"
+                    : "idle";
+              return (
+                <div
+                  key={`${title}-${item.title}`}
+                  className={`businessDialogStep businessDialogStep${state[0].toUpperCase()}${state.slice(1)}`}
+                >
+                  <div className="businessDialogStepIndex">{index + 1}</div>
+                  <div className="businessDialogStepText">{item.title}</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         <div className="businessDialogBody">
           {bodyContent ?? (
@@ -301,9 +310,12 @@ export function BusinessCommandDialog({
                 第 {currentStep + 1} 步 / 共 {steps.length} 步
               </div>
               <div className="businessDialogBodyTitle">{step.title}</div>
-              <div className="businessDialogBodyDescription">{step.description}</div>
+              <div className="businessDialogBodyDescription">
+                {step.description}
+              </div>
               <div className="businessDialogHint">
-                保持当前窗口打开，按本步骤说明继续在 SVG 画布中选择、标记或调整对象。
+                保持当前窗口打开，按本步骤说明继续在 SVG
+                画布中选择、标记或调整对象。
               </div>
             </>
           )}
@@ -327,11 +339,19 @@ export function BusinessCommandDialog({
                 退出
               </button>
               {isLastStep ? (
-                <button type="button" className="btn btnPrimary" onClick={onFinish}>
+                <button
+                  type="button"
+                  className="btn btnPrimary"
+                  onClick={onFinish}
+                >
                   完成
                 </button>
               ) : (
-                <button type="button" className="btn btnPrimary" onClick={onNext}>
+                <button
+                  type="button"
+                  className="btn btnPrimary"
+                  onClick={onNext}
+                >
                   下一步
                 </button>
               )}
@@ -342,7 +362,9 @@ export function BusinessCommandDialog({
         {showExitConfirm ? (
           <div className="businessDialogConfirmOverlay">
             <div className="businessDialogConfirm">
-              <div className="businessDialogConfirmTitle">是否结束，将清理当前操作</div>
+              <div className="businessDialogConfirmTitle">
+                是否结束，将清理当前操作
+              </div>
               <div className="businessDialogConfirmText">
                 当前业务命令流程尚未完成，结束后会清空当前步骤状态。
               </div>

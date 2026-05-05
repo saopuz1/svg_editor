@@ -1,87 +1,94 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { HexColorPicker } from 'react-colorful';
-import { BusinessCommandDialog } from '../../components/BusinessCommandDialog';
-import { MenuDropdown } from '../../components/MenuDropdown';
-import { useDocumentState, useEditState, useEditor } from '../../app/EditorContext';
-import { BusinessCommandHost } from '../businessCommands/host/BusinessCommandHost';
+import { useEffect, useMemo, useRef, useState } from "react";
+import { HexColorPicker } from "react-colorful";
+import { BusinessCommandDialog } from "../../components/BusinessCommandDialog";
+import { MenuDropdown } from "../../components/MenuDropdown";
+import {
+  useDocumentState,
+  useEditState,
+  useEditor,
+} from "../../app/EditorContext";
+import { BusinessCommandHost } from "../businessCommands/host/BusinessCommandHost";
 import type {
   AnnotationField,
   AutoModifierConfig,
   NodeBusiness,
   NodeId,
   标注样式,
-} from '../data/types';
+} from "../data/types";
 import {
   DEFAULT_ANNOTATION_BORDER_STYLE,
   resolveNodeAnnotationStyle,
-} from '../data/annotationStyles';
+} from "../data/annotationStyles";
 import {
   createBusinessForFabricTypeAndType,
   getAllowedBusinessTypesForFabricType,
   isLineLikeNode,
   isTextLikeNode,
-} from '../data/business';
+} from "../data/business";
 import {
   createNodeIdForBusiness,
   shouldRegenerateNodeIdOnBusinessChange,
-} from '../data/idRules';
-import { serializeDocument } from '../data/serialization';
-import { createCommand } from '../edit/commands';
+} from "../data/idRules";
+import { serializeDocument } from "../data/serialization";
+import { createCommand } from "../edit/commands";
 import {
   CANCEL_ACTIVE_DRAWING_EVENT,
   resolveShortcutAction,
   shouldIgnoreGlobalShortcutTarget,
-} from '../edit/shortcuts';
-import type { ToolId } from '../edit/tools';
-import { readNodeNumberProp } from '../../rendering/fabric/fabricProjection';
-import { FabricStage, type FabricStageApi } from './FabricStage';
-import {
-  getInspectorSections,
-  type InspectorFieldId,
-} from './inspectorSchema';
-import { DEFAULT_VIEW_STATE, type ViewState } from './viewState';
+} from "../edit/shortcuts";
+import type { ToolId } from "../edit/tools";
+import { readNodeNumberProp } from "../../rendering/fabric/fabricProjection";
+import { FabricStage, type FabricStageApi } from "./FabricStage";
+import { getInspectorSections, type InspectorFieldId } from "./inspectorSchema";
+import { DEFAULT_VIEW_STATE, type ViewState } from "./viewState";
 
-const ANNOTATION_FIELD_OPTIONS: AnnotationField[] = ['车线编号', '区域', '档位', '单双', 'DML'];
+const ANNOTATION_FIELD_OPTIONS: AnnotationField[] = [
+  "车线编号",
+  "区域",
+  "档位",
+  "单双",
+  "DML",
+];
 const FONT_FAMILY_OPTIONS = [
   {
-    label: '系统默认',
-    value: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
+    label: "系统默认",
+    value: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
   },
   {
-    label: '苹方',
+    label: "苹方",
     value: '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
   },
   {
-    label: '微软雅黑',
+    label: "微软雅黑",
     value: '"Microsoft YaHei", "PingFang SC", sans-serif',
   },
   {
-    label: '宋体',
+    label: "宋体",
     value: '"SimSun", "Songti SC", serif',
   },
   {
-    label: '黑体',
+    label: "黑体",
     value: '"SimHei", "Heiti SC", sans-serif',
   },
   {
-    label: '等线',
+    label: "等线",
     value: '"DengXian", "Microsoft YaHei", sans-serif',
   },
   {
-    label: 'Arial',
-    value: 'Arial, sans-serif',
+    label: "Arial",
+    value: "Arial, sans-serif",
   },
   {
-    label: '新罗马',
+    label: "新罗马",
     value: '"Times New Roman", serif',
   },
   {
-    label: '等宽',
+    label: "等宽",
     value: '"Courier New", monospace',
   },
 ] as const;
 
-type BusinessCommandId = 'extract-carline' | 'mark-gear' | 'mark-odd-even';
+type BusinessCommandId = "extract-carline" | "mark-gear" | "mark-odd-even";
 
 const BUSINESS_COMMAND_FLOWS: Record<
   BusinessCommandId,
@@ -95,56 +102,59 @@ const BUSINESS_COMMAND_FLOWS: Record<
     }>;
   }
 > = {
-  'extract-carline': {
-    menuLabel: '提取车线',
-    title: '提取车线',
-    summary: '按区域逐步提取车线，业务命令模式使用独立 SVG 命中层。',
+  "extract-carline": {
+    menuLabel: "提取车线",
+    title: "提取车线",
+    summary: "按区域逐步提取车线，业务命令模式使用独立 SVG 命中层。",
     steps: [
       {
-        title: '当前区域',
-        description: '选择区域、设置车线长度，并在 SVG 命中层里刷选线条。',
+        title: "当前区域",
+        description: "选择区域、设置车线长度，并在 SVG 命中层里刷选线条。",
       },
     ],
   },
-  'mark-gear': {
-    menuLabel: '标记档位',
-    title: '标记档位',
-    summary: '按步骤确认目标对象、档位规则和最终写入。',
+  "mark-gear": {
+    menuLabel: "标记档位",
+    title: "标记档位",
+    summary: "按步骤确认目标对象、档位规则和最终写入。",
     steps: [
       {
-        title: '选择目标对象',
-        description: '确认本次需要写入档位信息的对象范围，避免误修改无关节点。',
+        title: "选择目标对象",
+        description: "确认本次需要写入档位信息的对象范围，避免误修改无关节点。",
       },
       {
-        title: '设置档位规则',
-        description: '核对档位来源、映射方式和写入策略，确保标记结果符合预期。',
+        title: "设置档位规则",
+        description: "核对档位来源、映射方式和写入策略，确保标记结果符合预期。",
       },
       {
-        title: '完成标记',
-        description: '确认后结束档位标记流程，后续可在这里接入实际业务执行逻辑。',
+        title: "完成标记",
+        description:
+          "确认后结束档位标记流程，后续可在这里接入实际业务执行逻辑。",
       },
     ],
   },
-  'mark-odd-even': {
-    menuLabel: '标记单双',
-    title: '标记单双',
-    summary: '按步骤确认目标对象、单双规则和执行结果。',
+  "mark-odd-even": {
+    menuLabel: "标记单双",
+    title: "标记单双",
+    summary: "按步骤确认目标对象、单双规则和执行结果。",
     steps: [
       {
-        title: '选择目标对象',
-        description: '确认本次需要标记单双属性的对象范围，避免影响当前文档中的其他对象。',
+        title: "选择目标对象",
+        description:
+          "确认本次需要标记单双属性的对象范围，避免影响当前文档中的其他对象。",
       },
       {
-        title: '设置单双规则',
-        description: '核对单双判定依据、继承方式和覆盖策略，保证结果可控。',
+        title: "设置单双规则",
+        description: "核对单双判定依据、继承方式和覆盖策略，保证结果可控。",
       },
       {
-        title: '完成标记',
-        description: '确认后结束单双标记流程，后续可在这里接入实际业务执行逻辑。',
+        title: "完成标记",
+        description:
+          "确认后结束单双标记流程，后续可在这里接入实际业务执行逻辑。",
       },
     ],
   },
-}
+};
 
 function normalizeHexColor(value: string, fallback: string) {
   return /^#([0-9a-fA-F]{6})$/.test(value) ? value : fallback;
@@ -170,7 +180,7 @@ function AnnotationColorField({
       <div className="colorField">
         <button
           type="button"
-          className={`colorTrigger ${open ? 'colorTriggerActive' : ''}`}
+          className={`colorTrigger ${open ? "colorTriggerActive" : ""}`}
           onClick={() => setOpen((prev) => !prev)}
         >
           <span
@@ -190,10 +200,10 @@ function AnnotationColorField({
   );
 }
 
-function downloadText(filename: string, content: string, mime = 'text/plain') {
+function downloadText(filename: string, content: string, mime = "text/plain") {
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+  const a = document.createElement("a");
   a.href = url;
   a.download = filename;
   a.click();
@@ -215,11 +225,11 @@ function useResizableRightPanel(initialWidth: number) {
       draggingRef.current = false;
     };
 
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
     return () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
     };
   }, []);
 
@@ -232,13 +242,13 @@ function useResizableRightPanel(initialWidth: number) {
 
 function iconForTool(toolId: ToolId) {
   switch (toolId) {
-    case 'select-box':
+    case "select-box":
       return (
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M7 2l12 11.2-5.8.5 3.3 7.3-2.2.9-3.2-7.4-4.4 4.7z" />
         </svg>
       );
-    case 'select-lasso':
+    case "select-lasso":
       return (
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path
@@ -249,13 +259,13 @@ function iconForTool(toolId: ToolId) {
           />
         </svg>
       );
-    case 'draw-path':
+    case "draw-path":
       return (
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M3 21c0-1.1.9-2 2-2s2 .9 2 2-.9 2-2 2-2-.9-2-2zm14-16c0-1.1.9-2 2-2s2 .9 2 2-.9 2-2 2-2-.9-2-2zM6.6 19.8l10.8-13.6c.4-.5 1.2-.6 1.7-.2.5.4.6 1.2.2 1.7L8.5 21.3c-.4.5-1.2.6-1.7.2-.5-.4-.6-1.2-.2-1.7z" />
         </svg>
       );
-    case 'draw-bezier':
+    case "draw-bezier":
       return (
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path
@@ -267,7 +277,7 @@ function iconForTool(toolId: ToolId) {
           />
         </svg>
       );
-    case 'draw-line':
+    case "draw-line":
       return (
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path
@@ -279,7 +289,7 @@ function iconForTool(toolId: ToolId) {
           />
         </svg>
       );
-    case 'draw-text':
+    case "draw-text":
       return (
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M5 4v3h5.5v12h3V7H19V4z" />
@@ -297,16 +307,16 @@ export function EditorShell() {
 
   const stageRef = useRef<FabricStageApi | null>(null);
 
-  const [importError, setImportError] = useState<string>('');
+  const [importError, setImportError] = useState<string>("");
   const [viewState, setViewState] = useState<ViewState>(DEFAULT_VIEW_STATE);
   const [activeBusinessCommandId, setActiveBusinessCommandId] =
     useState<BusinessCommandId | null>(null);
   const [businessCommandStepIndex, setBusinessCommandStepIndex] = useState(0);
   const [showBusinessCommandExitConfirm, setShowBusinessCommandExitConfirm] =
     useState(false);
-  const [businessCommandSvgMarkup, setBusinessCommandSvgMarkup] = useState('');
+  const [businessCommandSvgMarkup, setBusinessCommandSvgMarkup] = useState("");
 
-  const [rightTab, setRightTab] = useState<'inspector' | 'rules'>('inspector');
+  const [rightTab, setRightTab] = useState<"inspector" | "rules">("inspector");
 
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
@@ -318,9 +328,12 @@ export function EditorShell() {
   const tools = editState.tools;
   const selection = editState.selection;
   const history = editor.edit.getHistory();
-  const isExtractCarlineHostOpen = activeBusinessCommandId === 'extract-carline';
+  const isExtractCarlineHostOpen =
+    activeBusinessCommandId === "extract-carline";
   const activeLegacyBusinessFlow =
-    activeBusinessCommandId && activeBusinessCommandId !== 'extract-carline'
+    activeBusinessCommandId &&
+    activeBusinessCommandId !== "extract-carline" &&
+    activeBusinessCommandId !== "mark-gear"
       ? BUSINESS_COMMAND_FLOWS[activeBusinessCommandId]
       : null;
 
@@ -338,7 +351,10 @@ export function EditorShell() {
     patch: Record<string, unknown>,
     label: string,
   ) => {
-    editor.edit.execute(createCommand('更新图形属性', { nodeId, patch }), label);
+    editor.edit.execute(
+      createCommand("更新图形属性", { nodeId, patch }),
+      label,
+    );
   };
 
   const setBusiness = (
@@ -348,24 +364,37 @@ export function EditorShell() {
     nextNodeId?: NodeId,
   ) => {
     editor.edit.execute(
-      createCommand('设置业务属性', { nodeId, business, nextNodeId }),
+      createCommand("设置业务属性", { nodeId, business, nextNodeId }),
       label,
     );
   };
 
   const setNodeLocked = (nodeId: NodeId, locked: boolean) => {
-    editor.edit.execute(createCommand('设置节点状态', { nodeId, locked }), locked ? '锁定节点' : '解锁节点');
+    editor.edit.execute(
+      createCommand("设置节点状态", { nodeId, locked }),
+      locked ? "锁定节点" : "解锁节点",
+    );
   };
 
   const updateCarlineFields = (
     nodeId: NodeId,
     payload: { 尺数?: number; 是双数?: boolean },
   ) => {
-    editor.edit.execute(createCommand('更新车线字段', { nodeId, ...payload }), '更新车线字段');
+    editor.edit.execute(
+      createCommand("更新车线字段", { nodeId, ...payload }),
+      "更新车线字段",
+    );
   };
 
-  const updateNodeAnnotationStyle = (nodeId: NodeId, style: 标注样式, label: string) => {
-    editor.edit.execute(createCommand('设置节点标注样式', { nodeId, style }), label);
+  const updateNodeAnnotationStyle = (
+    nodeId: NodeId,
+    style: 标注样式,
+    label: string,
+  ) => {
+    editor.edit.execute(
+      createCommand("设置节点标注样式", { nodeId, style }),
+      label,
+    );
   };
 
   const updateSelectedNodeAnnotationStyle = (
@@ -374,21 +403,27 @@ export function EditorShell() {
   ) => {
     if (!selectedNode) return;
     if (!isTextLikeNode(selectedNode)) return;
-    const prev = resolveNodeAnnotationStyle(selectedNode, document.domain.标注样式);
+    const prev = resolveNodeAnnotationStyle(
+      selectedNode,
+      document.domain.标注样式,
+    );
     updateNodeAnnotationStyle(selectedNode.id, recipe(prev), label);
   };
 
   const setAutoModifiers = (mods: AutoModifierConfig[]) => {
-    editor.edit.execute(createCommand('设置自动修改器', { autoModifiers: mods }), '设置自动修改器');
+    editor.edit.execute(
+      createCommand("设置自动修改器", { autoModifiers: mods }),
+      "设置自动修改器",
+    );
   };
 
   const addModifier = () => {
     const next: AutoModifierConfig = {
       id: crypto.randomUUID(),
-      type: '按区域自动标注DML',
+      type: "按区域自动标注DML",
       启用: true,
-      规律: ['D', 'M', 'L'],
-      范围: [{ 区域: 'A', 开始: 1, 结束: 10 }],
+      规律: ["D", "M", "L"],
+      范围: [{ 区域: "A", 开始: 1, 结束: 10 }],
     };
     setAutoModifiers([...document.domain.自动修改器, next]);
   };
@@ -410,22 +445,25 @@ export function EditorShell() {
 
   const toggleModifierEnabled = (id: string) => {
     setAutoModifiers(
-      document.domain.自动修改器.map((m) => (m.id === id ? { ...m, 启用: !m.启用 } : m)),
+      document.domain.自动修改器.map((m) =>
+        m.id === id ? { ...m, 启用: !m.启用 } : m,
+      ),
     );
   };
-
 
   const commandNotImplemented = (name: string) => {
     window.alert(`${name}：骨架中已预留入口，业务逻辑待接入`);
   };
 
+  const isMarkGearHostOpen = activeBusinessCommandId === "mark-gear";
+
   useEffect(() => {
-    if (!isExtractCarlineHostOpen) {
-      setBusinessCommandSvgMarkup('');
+    if (!isExtractCarlineHostOpen && !isMarkGearHostOpen) {
+      setBusinessCommandSvgMarkup("");
       return;
     }
-    setBusinessCommandSvgMarkup(stageRef.current?.exportSvg() ?? '');
-  }, [document, isExtractCarlineHostOpen, viewState]);
+    setBusinessCommandSvgMarkup(stageRef.current?.exportSvg() ?? "");
+  }, [document, isExtractCarlineHostOpen, isMarkGearHostOpen, viewState]);
 
   const openBusinessCommandDialog = (commandId: BusinessCommandId) => {
     setActiveBusinessCommandId(commandId);
@@ -480,36 +518,45 @@ export function EditorShell() {
       if (!action) return;
 
       e.preventDefault();
-      if (action.type === 'undo') {
+      if (action.type === "undo") {
         editor.edit.undo();
         return;
       }
-      if (action.type === 'activate-tool') {
+      if (action.type === "activate-tool") {
         editor.edit.activateTool(action.toolId);
         return;
       }
-      if (action.type === 'delete-selection') {
+      if (action.type === "delete-selection") {
         editor.edit.execute(
-          createCommand('删除节点', { nodeIds: selection }),
-          '删除',
+          createCommand("删除节点", { nodeIds: selection }),
+          "删除",
         );
         return;
       }
-      if (action.type === 'cancel-active-drawing') {
+      if (action.type === "cancel-active-drawing") {
         window.dispatchEvent(new Event(CANCEL_ACTIVE_DRAWING_EVENT));
       }
     };
 
-    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener("keydown", onKeyDown);
     return () => {
-      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener("keydown", onKeyDown);
     };
   }, [editor, selection, tools]);
 
-  const renderReadOnlyField = (fieldId: string, label: string, value: string | number) => (
+  const renderReadOnlyField = (
+    fieldId: string,
+    label: string,
+    value: string | number,
+  ) => (
     <div className="row rowDisabled" key={fieldId}>
       <div className="label">{label}</div>
-      <input className="input inputDisabled" value={String(value)} readOnly disabled />
+      <input
+        className="input inputDisabled"
+        value={String(value)}
+        readOnly
+        disabled
+      />
     </div>
   );
 
@@ -530,7 +577,7 @@ export function EditorShell() {
           <button
             key={option.value}
             type="button"
-            className={`toggleButton ${value === option.value ? 'toggleButtonActive' : ''}`}
+            className={`toggleButton ${value === option.value ? "toggleButtonActive" : ""}`}
             aria-pressed={value === option.value}
             onClick={option.onClick}
           >
@@ -547,7 +594,7 @@ export function EditorShell() {
       ? resolveNodeAnnotationStyle(selectedNode, document.domain.标注样式)
       : null;
 
-    if (fieldId === 'id') {
+    if (fieldId === "id") {
       return (
         <div className="row" key={fieldId}>
           <div className="label">ID</div>
@@ -556,55 +603,68 @@ export function EditorShell() {
       );
     }
 
-    if (fieldId === 'left') {
+    if (fieldId === "left") {
       return (
         <div className="row" key={fieldId}>
           <div className="label">X</div>
           <input
             className="input"
             type="number"
-            value={Math.round(readNodeNumberProp(selectedNode, 'left', 0))}
+            value={Math.round(readNodeNumberProp(selectedNode, "left", 0))}
             onChange={(e) =>
-              patchGraphic(selectedNode.id, { left: Number(e.currentTarget.value) }, '更新X')
+              patchGraphic(
+                selectedNode.id,
+                { left: Number(e.currentTarget.value) },
+                "更新X",
+              )
             }
           />
         </div>
       );
     }
 
-    if (fieldId === 'top') {
+    if (fieldId === "top") {
       return (
         <div className="row" key={fieldId}>
           <div className="label">Y</div>
           <input
             className="input"
             type="number"
-            value={Math.round(readNodeNumberProp(selectedNode, 'top', 0))}
+            value={Math.round(readNodeNumberProp(selectedNode, "top", 0))}
             onChange={(e) =>
-              patchGraphic(selectedNode.id, { top: Number(e.currentTarget.value) }, '更新Y')
+              patchGraphic(
+                selectedNode.id,
+                { top: Number(e.currentTarget.value) },
+                "更新Y",
+              )
             }
           />
         </div>
       );
     }
 
-    if (fieldId === 'locked') {
-      return renderToggleField(fieldId, '锁定', selectedNode.locked ? 'locked' : 'none', [
-        {
-          value: 'none',
-          label: '无',
-          onClick: () => setNodeLocked(selectedNode.id, false),
-        },
-        {
-          value: 'locked',
-          label: '锁定',
-          onClick: () => setNodeLocked(selectedNode.id, true),
-        },
-      ]);
+    if (fieldId === "locked") {
+      return renderToggleField(
+        fieldId,
+        "锁定",
+        selectedNode.locked ? "locked" : "none",
+        [
+          {
+            value: "none",
+            label: "无",
+            onClick: () => setNodeLocked(selectedNode.id, false),
+          },
+          {
+            value: "locked",
+            label: "锁定",
+            onClick: () => setNodeLocked(selectedNode.id, true),
+          },
+        ],
+      );
     }
 
     if (
-      fieldId === 'annotationStyleFontFamily' &&
+      fieldId === "annotationStyleFontFamily" &&
       isTextLikeNode(selectedNode) &&
       resolvedAnnotationStyle
     ) {
@@ -617,7 +677,7 @@ export function EditorShell() {
             onChange={(e) =>
               updateSelectedNodeAnnotationStyle(
                 (s) => ({ ...s, 字体: e.currentTarget.value }),
-                '更新标注样式字体',
+                "更新标注样式字体",
               )
             }
           >
@@ -632,7 +692,7 @@ export function EditorShell() {
     }
 
     if (
-      fieldId === 'annotationStyleFontSize' &&
+      fieldId === "annotationStyleFontSize" &&
       isTextLikeNode(selectedNode) &&
       resolvedAnnotationStyle
     ) {
@@ -646,7 +706,7 @@ export function EditorShell() {
             onChange={(e) =>
               updateSelectedNodeAnnotationStyle(
                 (s) => ({ ...s, 字号: Number(e.currentTarget.value) }),
-                '更新标注样式字号',
+                "更新标注样式字号",
               )
             }
           />
@@ -655,7 +715,7 @@ export function EditorShell() {
     }
 
     if (
-      fieldId === 'annotationStyleTextColor' &&
+      fieldId === "annotationStyleTextColor" &&
       isTextLikeNode(selectedNode) &&
       resolvedAnnotationStyle
     ) {
@@ -666,34 +726,37 @@ export function EditorShell() {
           value={resolvedAnnotationStyle.字色}
           fallback="#111111"
           onChange={(next) =>
-            updateSelectedNodeAnnotationStyle((s) => ({ ...s, 字色: next }), '更新标注样式字色')
+            updateSelectedNodeAnnotationStyle(
+              (s) => ({ ...s, 字色: next }),
+              "更新标注样式字色",
+            )
           }
         />
       );
     }
 
     if (
-      fieldId === 'annotationStyleHasBorder' &&
+      fieldId === "annotationStyleHasBorder" &&
       isTextLikeNode(selectedNode) &&
       resolvedAnnotationStyle
     ) {
       return renderToggleField(
         fieldId,
-        '边框',
-        resolvedAnnotationStyle.有边框 ? 'visible' : 'hidden',
+        "边框",
+        resolvedAnnotationStyle.有边框 ? "visible" : "hidden",
         [
           {
-            value: 'hidden',
-            label: '无',
+            value: "hidden",
+            label: "无",
             onClick: () =>
               updateSelectedNodeAnnotationStyle(
                 (s) => ({ ...s, 有边框: undefined }),
-                '更新标注样式边框显示',
+                "更新标注样式边框显示",
               ),
           },
           {
-            value: 'visible',
-            label: '有',
+            value: "visible",
+            label: "有",
             onClick: () =>
               updateSelectedNodeAnnotationStyle((s) => {
                 if (s.有边框) return s;
@@ -701,47 +764,47 @@ export function EditorShell() {
                   ...s,
                   有边框: { ...DEFAULT_ANNOTATION_BORDER_STYLE },
                 };
-              }, '更新标注样式边框显示'),
+              }, "更新标注样式边框显示"),
           },
         ],
       );
     }
 
     if (
-      fieldId === 'annotationStyleBorderTransparent' &&
+      fieldId === "annotationStyleBorderTransparent" &&
       isTextLikeNode(selectedNode) &&
       resolvedAnnotationStyle &&
       resolvedAnnotationStyle.有边框
     ) {
       return renderToggleField(
         fieldId,
-        '背景透明',
-        resolvedAnnotationStyle.有边框.是否透明 ? 'transparent' : 'opaque',
+        "背景透明",
+        resolvedAnnotationStyle.有边框.是否透明 ? "transparent" : "opaque",
         [
           {
-            value: 'opaque',
-            label: '不透明',
+            value: "opaque",
+            label: "不透明",
             onClick: () =>
               updateSelectedNodeAnnotationStyle((s) => {
                 if (!s.有边框) return s;
                 return { ...s, 有边框: { ...s.有边框, 是否透明: false } };
-              }, '更新标注样式背景透明'),
+              }, "更新标注样式背景透明"),
           },
           {
-            value: 'transparent',
-            label: '透明',
+            value: "transparent",
+            label: "透明",
             onClick: () =>
               updateSelectedNodeAnnotationStyle((s) => {
                 if (!s.有边框) return s;
                 return { ...s, 有边框: { ...s.有边框, 是否透明: true } };
-              }, '更新标注样式背景透明'),
+              }, "更新标注样式背景透明"),
           },
         ],
       );
     }
 
     if (
-      fieldId === 'annotationStyleBorderBackgroundColor' &&
+      fieldId === "annotationStyleBorderBackgroundColor" &&
       isTextLikeNode(selectedNode) &&
       resolvedAnnotationStyle &&
       resolvedAnnotationStyle.有边框
@@ -756,47 +819,47 @@ export function EditorShell() {
             updateSelectedNodeAnnotationStyle((s) => {
               if (!s.有边框) return s;
               return { ...s, 有边框: { ...s.有边框, 背景颜色: next } };
-            }, '更新标注样式背景颜色')
+            }, "更新标注样式背景颜色")
           }
         />
       );
     }
 
     if (
-      fieldId === 'annotationStyleBorderShape' &&
+      fieldId === "annotationStyleBorderShape" &&
       isTextLikeNode(selectedNode) &&
       resolvedAnnotationStyle &&
       resolvedAnnotationStyle.有边框
     ) {
       return renderToggleField(
         fieldId,
-        '边框形状',
+        "边框形状",
         resolvedAnnotationStyle.有边框.边框形状,
         [
           {
-            value: '方形',
-            label: '方形',
+            value: "方形",
+            label: "方形",
             onClick: () =>
               updateSelectedNodeAnnotationStyle((s) => {
                 if (!s.有边框) return s;
-                return { ...s, 有边框: { ...s.有边框, 边框形状: '方形' } };
-              }, '更新标注样式边框形状'),
+                return { ...s, 有边框: { ...s.有边框, 边框形状: "方形" } };
+              }, "更新标注样式边框形状"),
           },
           {
-            value: '圆形',
-            label: '圆形',
+            value: "圆形",
+            label: "圆形",
             onClick: () =>
               updateSelectedNodeAnnotationStyle((s) => {
                 if (!s.有边框) return s;
-                return { ...s, 有边框: { ...s.有边框, 边框形状: '圆形' } };
-              }, '更新标注样式边框形状'),
+                return { ...s, 有边框: { ...s.有边框, 边框形状: "圆形" } };
+              }, "更新标注样式边框形状"),
           },
         ],
       );
     }
 
     if (
-      fieldId === 'annotationStyleBorderColor' &&
+      fieldId === "annotationStyleBorderColor" &&
       isTextLikeNode(selectedNode) &&
       resolvedAnnotationStyle &&
       resolvedAnnotationStyle.有边框
@@ -811,13 +874,13 @@ export function EditorShell() {
             updateSelectedNodeAnnotationStyle((s) => {
               if (!s.有边框) return s;
               return { ...s, 有边框: { ...s.有边框, 边框颜色: next } };
-            }, '更新标注样式边框颜色')
+            }, "更新标注样式边框颜色")
           }
         />
       );
     }
 
-    if (fieldId === 'businessType') {
+    if (fieldId === "businessType") {
       const businessTypeOptions = getAllowedBusinessTypesForFabricType(
         selectedNode.fabricObject.type,
       );
@@ -828,7 +891,7 @@ export function EditorShell() {
             className="input"
             value={selectedNode.business.type}
             onChange={(e) => {
-              const nextType = e.currentTarget.value as NodeBusiness['type'];
+              const nextType = e.currentTarget.value as NodeBusiness["type"];
               const provisionalBusiness = createBusinessForFabricTypeAndType(
                 selectedNode.fabricObject.type,
                 nextType,
@@ -850,7 +913,12 @@ export function EditorShell() {
                 { nodeId: nextNodeId ?? selectedNode.id },
               );
               if (!business) return;
-              setBusiness(selectedNode.id, business, `设为${nextType}`, nextNodeId);
+              setBusiness(
+                selectedNode.id,
+                business,
+                `设为${nextType}`,
+                nextNodeId,
+              );
             }}
           >
             {businessTypeOptions.map((type) => (
@@ -864,41 +932,45 @@ export function EditorShell() {
     }
 
     if (
-      fieldId === 'carlineId' &&
+      fieldId === "carlineId" &&
       isLineLikeNode(selectedNode) &&
-      selectedNode.business.type === '车线'
+      selectedNode.business.type === "车线"
     ) {
-      return renderReadOnlyField(fieldId, '车线ID', selectedNode.business.id);
+      return renderReadOnlyField(fieldId, "车线ID", selectedNode.business.id);
     }
 
     if (
-      fieldId === 'carlineNumber' &&
+      fieldId === "carlineNumber" &&
       isLineLikeNode(selectedNode) &&
-      selectedNode.business.type === '车线'
+      selectedNode.business.type === "车线"
     ) {
-      return renderReadOnlyField(fieldId, '编号', selectedNode.business.编号);
+      return renderReadOnlyField(fieldId, "编号", selectedNode.business.编号);
     }
 
     if (
-      fieldId === 'carlineArea' &&
+      fieldId === "carlineArea" &&
       isLineLikeNode(selectedNode) &&
-      selectedNode.business.type === '车线'
+      selectedNode.business.type === "车线"
     ) {
-      return renderReadOnlyField(fieldId, '区域', selectedNode.business.区域);
+      return renderReadOnlyField(fieldId, "区域", selectedNode.business.区域);
     }
 
     if (
-      fieldId === 'carlineCode' &&
+      fieldId === "carlineCode" &&
       isLineLikeNode(selectedNode) &&
-      selectedNode.business.type === '车线'
+      selectedNode.business.type === "车线"
     ) {
-      return renderReadOnlyField(fieldId, '车线编号', selectedNode.business.车线编号);
+      return renderReadOnlyField(
+        fieldId,
+        "车线编号",
+        selectedNode.business.车线编号,
+      );
     }
 
     if (
-      fieldId === 'carlineSize' &&
+      fieldId === "carlineSize" &&
       isLineLikeNode(selectedNode) &&
-      selectedNode.business.type === '车线'
+      selectedNode.business.type === "车线"
     ) {
       return (
         <div className="row" key={fieldId}>
@@ -918,50 +990,55 @@ export function EditorShell() {
     }
 
     if (
-      fieldId === 'carlineGear' &&
+      fieldId === "carlineGear" &&
       isLineLikeNode(selectedNode) &&
-      selectedNode.business.type === '车线'
+      selectedNode.business.type === "车线"
     ) {
-      return renderReadOnlyField(fieldId, '档位', selectedNode.business.档位);
+      return renderReadOnlyField(fieldId, "档位", selectedNode.business.档位);
     }
 
     if (
-      fieldId === 'carlineDml' &&
+      fieldId === "carlineDml" &&
       isLineLikeNode(selectedNode) &&
-      selectedNode.business.type === '车线'
+      selectedNode.business.type === "车线"
     ) {
-      return renderReadOnlyField(fieldId, 'DML', selectedNode.business.DML);
+      return renderReadOnlyField(fieldId, "DML", selectedNode.business.DML);
     }
 
     if (
-      fieldId === 'carlineIsEven' &&
+      fieldId === "carlineIsEven" &&
       isLineLikeNode(selectedNode) &&
-      selectedNode.business.type === '车线'
+      selectedNode.business.type === "车线"
     ) {
-      return renderToggleField(fieldId, '单双', selectedNode.business.是双数 ? 'double' : 'single', [
-        {
-          value: 'single',
-          label: '单',
-          onClick: () =>
-            updateCarlineFields(selectedNode.id, {
-              是双数: false,
-            }),
-        },
-        {
-          value: 'double',
-          label: '双',
-          onClick: () =>
-            updateCarlineFields(selectedNode.id, {
-              是双数: true,
-            }),
-        },
-      ]);
+      return renderToggleField(
+        fieldId,
+        "单双",
+        selectedNode.business.是双数 ? "double" : "single",
+        [
+          {
+            value: "single",
+            label: "单",
+            onClick: () =>
+              updateCarlineFields(selectedNode.id, {
+                是双数: false,
+              }),
+          },
+          {
+            value: "double",
+            label: "双",
+            onClick: () =>
+              updateCarlineFields(selectedNode.id, {
+                是双数: true,
+              }),
+          },
+        ],
+      );
     }
 
     if (
-      fieldId === 'carlineAnnotationNodeIds' &&
+      fieldId === "carlineAnnotationNodeIds" &&
       isLineLikeNode(selectedNode) &&
-      selectedNode.business.type === '车线'
+      selectedNode.business.type === "车线"
     ) {
       return (
         <details className="inspectorFold" key={fieldId}>
@@ -969,22 +1046,22 @@ export function EditorShell() {
           <div className="inspectorFoldBody">
             {renderReadOnlyField(
               `${fieldId}-carline-code`,
-              '车线编号',
+              "车线编号",
               selectedNode.business.标注NodeId.车线编号,
             )}
             {renderReadOnlyField(
               `${fieldId}-gear`,
-              '档位',
+              "档位",
               selectedNode.business.标注NodeId.档位,
             )}
             {renderReadOnlyField(
               `${fieldId}-odd-even`,
-              '单双',
+              "单双",
               selectedNode.business.标注NodeId.单双,
             )}
             {renderReadOnlyField(
               `${fieldId}-dml`,
-              'DML',
+              "DML",
               selectedNode.business.标注NodeId.DML,
             )}
           </div>
@@ -992,10 +1069,13 @@ export function EditorShell() {
       );
     }
 
-    if (fieldId === 'annotationField' && selectedNode.business.type === '标注') {
+    if (
+      fieldId === "annotationField" &&
+      selectedNode.business.type === "标注"
+    ) {
       const annotationBusiness = selectedNode.business as Extract<
         NodeBusiness,
-        { type: '标注' }
+        { type: "标注" }
       >;
       return (
         <div className="row" key={fieldId}>
@@ -1007,17 +1087,20 @@ export function EditorShell() {
               const nextBusiness = {
                 ...annotationBusiness,
                 字段: e.currentTarget.value as AnnotationField,
-              } satisfies Extract<NodeBusiness, { type: '标注' }>;
+              } satisfies Extract<NodeBusiness, { type: "标注" }>;
               const nextNodeId = shouldRegenerateNodeIdOnBusinessChange(
                 selectedNode,
                 nextBusiness,
               )
-                ? createNodeIdForBusiness(selectedNode.fabricObject.type, nextBusiness)
+                ? createNodeIdForBusiness(
+                    selectedNode.fabricObject.type,
+                    nextBusiness,
+                  )
                 : undefined;
               setBusiness(
                 selectedNode.id,
                 nextBusiness,
-                '更新标注字段',
+                "更新标注字段",
                 nextNodeId,
               );
             }}
@@ -1032,10 +1115,13 @@ export function EditorShell() {
       );
     }
 
-    if (fieldId === 'annotationCarlineId' && selectedNode.business.type === '标注') {
+    if (
+      fieldId === "annotationCarlineId" &&
+      selectedNode.business.type === "标注"
+    ) {
       const annotationBusiness = selectedNode.business as Extract<
         NodeBusiness,
-        { type: '标注' }
+        { type: "标注" }
       >;
       return (
         <div className="row" key={fieldId}>
@@ -1047,7 +1133,7 @@ export function EditorShell() {
               setBusiness(
                 selectedNode.id,
                 { ...annotationBusiness, 归属车线Id: e.currentTarget.value },
-                '更新归属车线ID',
+                "更新归属车线ID",
               )
             }
           />
@@ -1064,40 +1150,58 @@ export function EditorShell() {
         <MenuDropdown label="文件">
           <div className="viewTitle">导入</div>
 
-          <label className="checkRow" style={{ position: 'relative', cursor: 'pointer' }}>
+          <label
+            className="checkRow"
+            style={{ position: "relative", cursor: "pointer" }}
+          >
             导入 SVG
             <input
               type="file"
               accept="image/svg+xml,.svg"
-              style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }}
+              style={{
+                position: "absolute",
+                inset: 0,
+                opacity: 0,
+                cursor: "pointer",
+              }}
               onChange={async (e) => {
                 const input = e.currentTarget;
                 const file = input.files?.[0];
                 if (!file) return;
-                setImportError('');
+                setImportError("");
                 try {
                   const svg = await file.text();
                   await stageRef.current?.importSvg(svg);
                 } catch (err) {
-                  setImportError(err instanceof Error ? err.message : String(err));
+                  setImportError(
+                    err instanceof Error ? err.message : String(err),
+                  );
                 } finally {
-                  input.value = '';
+                  input.value = "";
                 }
               }}
             />
           </label>
 
-          <label className="checkRow" style={{ position: 'relative', cursor: 'pointer' }}>
+          <label
+            className="checkRow"
+            style={{ position: "relative", cursor: "pointer" }}
+          >
             导入 CoreDraw
             <input
               type="file"
               accept=".cdr"
-              style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }}
+              style={{
+                position: "absolute",
+                inset: 0,
+                opacity: 0,
+                cursor: "pointer",
+              }}
               onChange={(e) => {
                 const file = e.currentTarget.files?.[0];
                 if (!file) return;
                 commandNotImplemented(`导入 CoreDraw（${file.name}）`);
-                e.currentTarget.value = '';
+                e.currentTarget.value = "";
               }}
             />
           </label>
@@ -1110,9 +1214,9 @@ export function EditorShell() {
             className="checkRow"
             role="button"
             onClick={() => {
-              const svg = stageRef.current?.exportSvg() ?? '';
+              const svg = stageRef.current?.exportSvg() ?? "";
               if (!svg) return;
-              downloadText('canvas.svg', svg, 'image/svg+xml');
+              downloadText("canvas.svg", svg, "image/svg+xml");
             }}
           >
             导出 SVG
@@ -1123,7 +1227,7 @@ export function EditorShell() {
             role="button"
             onClick={() => {
               const json = serializeDocument(editor.data.getState());
-              downloadText('document.json', json, 'application/json');
+              downloadText("document.json", json, "application/json");
             }}
           >
             导出 JSON
@@ -1132,7 +1236,7 @@ export function EditorShell() {
           <div
             className="checkRow"
             role="button"
-            onClick={() => commandNotImplemented('导出生产图纸')}
+            onClick={() => commandNotImplemented("导出生产图纸")}
           >
             导出生产图纸
           </div>
@@ -1162,9 +1266,9 @@ export function EditorShell() {
           </div>
           {(
             [
-              'extract-carline',
-              'mark-gear',
-              'mark-odd-even',
+              "extract-carline",
+              "mark-gear",
+              "mark-odd-even",
             ] as BusinessCommandId[]
           ).map((commandId) => {
             const command = BUSINESS_COMMAND_FLOWS[commandId];
@@ -1215,7 +1319,7 @@ export function EditorShell() {
           <div className="viewTitle" style={{ marginTop: 10 }}>
             标注文本显示
           </div>
-          {(['车线编号', '区域', '档位', '单双', 'DML'] as const).map((key) => (
+          {(["车线编号", "区域", "档位", "单双", "DML"] as const).map((key) => (
             <label className="checkRow" key={key}>
               <input
                 type="checkbox"
@@ -1232,7 +1336,6 @@ export function EditorShell() {
             </label>
           ))}
         </MenuDropdown>
-
       </div>
 
       <div className="workspace">
@@ -1248,50 +1351,60 @@ export function EditorShell() {
           </div>
         </div>
 
-        {importError ? <div className="banner">导入失败：{importError}</div> : null}
+        {importError ? (
+          <div className="banner">导入失败：{importError}</div>
+        ) : null}
 
         <div className="mainArea">
           <div
-            className={toolbarCollapsed ? 'toolbar' : 'toolbar toolbarExpanded'}
+            className={toolbarCollapsed ? "toolbar" : "toolbar toolbarExpanded"}
           >
             <>
               <div className="toolGroup">
                 <div className="toolGroupTitle">选择工具</div>
                 {tools
-                  .filter((t) => t.type === '选择工具')
+                  .filter((t) => t.type === "选择工具")
                   .map((tool) => {
                     const active = tool.id === activeToolId;
                     return (
                       <button
                         key={tool.id}
                         type="button"
-                        title={`${tool.name} (${tool.shortcut ?? ''})`}
-                        className={active ? 'toolBtn toolBtnActive' : 'toolBtn'}
-                        onClick={() => editor.edit.activateTool(tool.id as ToolId)}
+                        title={`${tool.name} (${tool.shortcut ?? ""})`}
+                        className={active ? "toolBtn toolBtnActive" : "toolBtn"}
+                        onClick={() =>
+                          editor.edit.activateTool(tool.id as ToolId)
+                        }
                       >
                         {iconForTool(tool.id as ToolId)}
-                        <span className="toolBtnLabel">{tool.toolbarName ?? tool.name}</span>
+                        <span className="toolBtnLabel">
+                          {tool.toolbarName ?? tool.name}
+                        </span>
                       </button>
                     );
                   })}
               </div>
 
-              <div className="toolGroup" style={{ borderBottom: 'none' }}>
+              <div className="toolGroup" style={{ borderBottom: "none" }}>
                 <div className="toolGroupTitle">绘图工具</div>
                 {tools
-                  .filter((t) => t.type === '绘图工具')
+                  .filter((t) => t.type === "绘图工具")
                   .map((tool) => {
                     const active = tool.id === activeToolId;
                     return (
                       <button
                         key={tool.id}
                         type="button"
-                        title={`${tool.name} (${tool.shortcut ?? ''})`}
-                        className={active ? 'toolBtn toolBtnActive' : 'toolBtn'}
-                        onClick={() => editor.edit.activateTool(tool.id as ToolId)}
+                        title={`${tool.name} (${tool.shortcut ?? ""})`}
+                        className={active ? "toolBtn toolBtnActive" : "toolBtn"}
+                        onClick={() =>
+                          editor.edit.activateTool(tool.id as ToolId)
+                        }
                       >
                         {iconForTool(tool.id as ToolId)}
-                        <span className="toolBtnLabel">{tool.toolbarName ?? tool.name}</span>
+                        <span className="toolBtnLabel">
+                          {tool.toolbarName ?? tool.name}
+                        </span>
                       </button>
                     );
                   })}
@@ -1304,12 +1417,12 @@ export function EditorShell() {
               type="button"
               className="edgeToggleBtn edgeToggleBtnLeft"
               style={{ left: -14 }}
-              aria-label={toolbarCollapsed ? '展开工具栏' : '收起工具栏'}
+              aria-label={toolbarCollapsed ? "展开工具栏" : "收起工具栏"}
               onClick={() => setToolbarCollapsed((v) => !v)}
             >
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path
-                  d={toolbarCollapsed ? 'M9 6l6 6-6 6' : 'M15 6l-6 6 6 6'}
+                  d={toolbarCollapsed ? "M9 6l6 6-6 6" : "M15 6l-6 6 6 6"}
                   stroke="currentColor"
                   strokeWidth="2"
                   fill="none"
@@ -1323,12 +1436,12 @@ export function EditorShell() {
               type="button"
               className="edgeToggleBtn edgeToggleBtnRight"
               style={{ right: rightCollapsed ? 8 : -14 }}
-              aria-label={rightCollapsed ? '展开属性栏' : '收起属性栏'}
+              aria-label={rightCollapsed ? "展开属性栏" : "收起属性栏"}
               onClick={() => setRightCollapsed((v) => !v)}
             >
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path
-                  d={rightCollapsed ? 'M15 6l-6 6 6 6' : 'M9 6l6 6-6 6'}
+                  d={rightCollapsed ? "M15 6l-6 6 6 6" : "M9 6l6 6-6 6"}
                   stroke="currentColor"
                   strokeWidth="2"
                   fill="none"
@@ -1346,11 +1459,19 @@ export function EditorShell() {
                 selection={selection}
                 activeToolId={activeToolId}
                 viewState={viewState}
-                businessCommandActive={isExtractCarlineHostOpen}
+                businessCommandActive={
+                  isExtractCarlineHostOpen || isMarkGearHostOpen
+                }
               />
               <BusinessCommandHost
-                open={isExtractCarlineHostOpen}
-                kind={isExtractCarlineHostOpen ? 'extract-carline' : null}
+                open={isExtractCarlineHostOpen || isMarkGearHostOpen}
+                kind={
+                  isExtractCarlineHostOpen
+                    ? "extract-carline"
+                    : isMarkGearHostOpen
+                      ? "mark-gear"
+                      : null
+                }
                 document={document}
                 svgMarkup={businessCommandSvgMarkup}
                 onClose={() => setActiveBusinessCommandId(null)}
@@ -1363,7 +1484,9 @@ export function EditorShell() {
           </div>
 
           <div
-            className={rightCollapsed ? 'rightPanel rightPanelCollapsed' : 'rightPanel'}
+            className={
+              rightCollapsed ? "rightPanel rightPanelCollapsed" : "rightPanel"
+            }
             style={rightCollapsed ? undefined : { width: rightWidth }}
           >
             {!rightCollapsed ? (
@@ -1372,27 +1495,43 @@ export function EditorShell() {
 
                 <div className="tabsHeader">
                   <div
-                    className={rightTab === 'inspector' ? 'tabBtn tabBtnActive' : 'tabBtn'}
-                    onClick={() => setRightTab('inspector')}
+                    className={
+                      rightTab === "inspector"
+                        ? "tabBtn tabBtnActive"
+                        : "tabBtn"
+                    }
+                    onClick={() => setRightTab("inspector")}
                   >
                     属性
                   </div>
                   <div
-                    className={rightTab === 'rules' ? 'tabBtn tabBtnActive' : 'tabBtn'}
-                    onClick={() => setRightTab('rules')}
+                    className={
+                      rightTab === "rules" ? "tabBtn tabBtnActive" : "tabBtn"
+                    }
+                    onClick={() => setRightTab("rules")}
                   >
                     全局规则栈
                   </div>
                 </div>
 
                 <div
-                  className={rightTab === 'inspector' ? 'tabContent tabContentActive' : 'tabContent'}
+                  className={
+                    rightTab === "inspector"
+                      ? "tabContent tabContentActive"
+                      : "tabContent"
+                  }
                 >
-                  <div className="section" style={{ flex: 1, borderBottom: 'none' }}>
+                  <div
+                    className="section"
+                    style={{ flex: 1, borderBottom: "none" }}
+                  >
                     <div className="sectionHeader">属性 (Inspector)</div>
                     <div className="sectionBody">
                       {!selectedNode ? (
-                        <div className="muted" style={{ textAlign: 'center', padding: '18px 0' }}>
+                        <div
+                          className="muted"
+                          style={{ textAlign: "center", padding: "18px 0" }}
+                        >
                           请在画布中选择对象
                         </div>
                       ) : (
@@ -1400,10 +1539,18 @@ export function EditorShell() {
                           {inspectorSections.map((section, sectionIndex) => (
                             <div
                               key={section.id}
-                              style={sectionIndex === 0 ? undefined : { marginTop: 10 }}
+                              style={
+                                sectionIndex === 0
+                                  ? undefined
+                                  : { marginTop: 10 }
+                              }
                             >
-                              <div className="sectionHeader">{section.title}</div>
-                              {section.fields.map((fieldId) => renderInspectorField(fieldId))}
+                              <div className="sectionHeader">
+                                {section.title}
+                              </div>
+                              {section.fields.map((fieldId) =>
+                                renderInspectorField(fieldId),
+                              )}
                             </div>
                           ))}
                         </div>
@@ -1412,20 +1559,37 @@ export function EditorShell() {
                   </div>
                 </div>
 
-                <div className={rightTab === 'rules' ? 'tabContent tabContentActive' : 'tabContent'}>
-                  <div className="section" style={{ flex: 1, overflow: 'hidden', borderBottom: 'none' }}>
+                <div
+                  className={
+                    rightTab === "rules"
+                      ? "tabContent tabContentActive"
+                      : "tabContent"
+                  }
+                >
+                  <div
+                    className="section"
+                    style={{
+                      flex: 1,
+                      overflow: "hidden",
+                      borderBottom: "none",
+                    }}
+                  >
                     <div className="sectionHeader">
                       <span>程序化标注 (Modifiers)</span>
                       <span
                         className="menuItem"
-                        style={{ color: 'var(--accent)' }}
+                        style={{ color: "var(--accent)" }}
                         onClick={() => setAutoModifiers([])}
                       >
                         清空
                       </span>
                     </div>
                     <div className="sectionBody">
-                      <button type="button" className="btn btnPrimary" onClick={addModifier}>
+                      <button
+                        type="button"
+                        className="btn btnPrimary"
+                        onClick={addModifier}
+                      >
                         + 添加规则
                       </button>
 
@@ -1434,53 +1598,83 @@ export function EditorShell() {
                           暂无规则
                         </div>
                       ) : (
-                        <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        <div
+                          style={{
+                            marginTop: 10,
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 10,
+                          }}
+                        >
                           {document.domain.自动修改器.map((m, idx) => {
                             const id = m.id ?? `idx-${idx}`;
                             const enabled = m.启用 ?? true;
                             return (
-                            <div
-                              key={id}
-                              style={{
-                                border: '1px solid var(--border)',
-                                borderRadius: 12,
-                                padding: 10,
-                                background: '#fff',
-                              }}
-                            >
                               <div
+                                key={id}
                                 style={{
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  gap: 10,
-                                  alignItems: 'flex-start',
+                                  border: "1px solid var(--border)",
+                                  borderRadius: 12,
+                                  padding: 10,
+                                  background: "#fff",
                                 }}
                               >
-                                <div>
-                                  <div style={{ fontWeight: 800 }}>{m.type}</div>
-                                  <div className="muted">{id.slice(0, 8)}</div>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    gap: 10,
+                                    alignItems: "flex-start",
+                                  }}
+                                >
+                                  <div>
+                                    <div style={{ fontWeight: 800 }}>
+                                      {m.type}
+                                    </div>
+                                    <div className="muted">
+                                      {id.slice(0, 8)}
+                                    </div>
+                                  </div>
+                                  <label className="checkRow">
+                                    <input
+                                      type="checkbox"
+                                      checked={enabled}
+                                      onChange={() => toggleModifierEnabled(id)}
+                                    />
+                                    启用
+                                  </label>
                                 </div>
-                                <label className="checkRow">
-                                  <input
-                                    type="checkbox"
-                                    checked={enabled}
-                                    onChange={() => toggleModifierEnabled(id)}
-                                  />
-                                  启用
-                                </label>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    gap: 8,
+                                    marginTop: 8,
+                                    flexWrap: "wrap",
+                                  }}
+                                >
+                                  <button
+                                    type="button"
+                                    className="btn"
+                                    onClick={() => moveModifier(id, -1)}
+                                  >
+                                    上移
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn"
+                                    onClick={() => moveModifier(id, 1)}
+                                  >
+                                    下移
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btnDanger"
+                                    onClick={() => deleteModifier(id)}
+                                  >
+                                    删除
+                                  </button>
+                                </div>
                               </div>
-                              <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-                                <button type="button" className="btn" onClick={() => moveModifier(id, -1)}>
-                                  上移
-                                </button>
-                                <button type="button" className="btn" onClick={() => moveModifier(id, 1)}>
-                                  下移
-                                </button>
-                                <button type="button" className="btn btnDanger" onClick={() => deleteModifier(id)}>
-                                  删除
-                                </button>
-                              </div>
-                            </div>
                             );
                           })}
                         </div>
@@ -1488,7 +1682,6 @@ export function EditorShell() {
                     </div>
                   </div>
                 </div>
-
               </>
             ) : null}
           </div>
@@ -1504,7 +1697,7 @@ export function EditorShell() {
 
       <BusinessCommandDialog
         open={Boolean(activeLegacyBusinessFlow)}
-        title={activeLegacyBusinessFlow?.title ?? ''}
+        title={activeLegacyBusinessFlow?.title ?? ""}
         summary={activeLegacyBusinessFlow?.summary}
         steps={activeLegacyBusinessFlow?.steps ?? []}
         currentStep={businessCommandStepIndex}

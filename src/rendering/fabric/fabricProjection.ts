@@ -372,12 +372,21 @@ export function applyNodeToObject(
   }
 }
 
+/**
+ * Fabric 默认开启 objectCaching：每个对象先渲染到离屏 cache canvas，再 drawImage 到主 canvas。
+ * cache canvas 有像素总量上限（perfLimitSizeTotal = 2M px），
+ * 当对象较大时会被强制降分辨率后再绘制，导致渲染模糊。
+ * 对于线条图编辑器，路径对象较简单，关闭缓存直接到主 canvas 上渲染，清晰度最高。
+ */
+const NO_CACHE = { objectCaching: false } as const;
+
 export function createFabricObject(node: EditorNode): FabricObject {
   const serialized = { ...node.fabricObject } as MutableSerializedFabricObject;
 
   if (serialized.type === "rect") {
     return new Rect({
       ...serialized,
+      ...NO_CACHE,
       originX: "left",
       originY: "top",
     });
@@ -387,6 +396,7 @@ export function createFabricObject(node: EditorNode): FabricObject {
     const { path: _path, type: _type, text, ...rest } = serialized;
     return new Textbox(typeof text === "string" ? text : "", {
       ...rest,
+      ...NO_CACHE,
       originX: "left",
       originY: "top",
       width: ensureNumber(serialized.width, 320),
@@ -394,15 +404,7 @@ export function createFabricObject(node: EditorNode): FabricObject {
   }
 
   if (serialized.type === "line") {
-    const {
-      path: _path,
-      type: _type,
-      x1,
-      y1,
-      x2,
-      y2,
-      ...rest
-    } = serialized;
+    const { path: _path, type: _type, x1, y1, x2, y2, ...rest } = serialized;
     return new Line(
       [
         ensureNumber(x1, 0),
@@ -412,6 +414,7 @@ export function createFabricObject(node: EditorNode): FabricObject {
       ],
       {
         ...rest,
+        ...NO_CACHE,
         originX: "left",
         originY: "top",
       },
@@ -423,6 +426,7 @@ export function createFabricObject(node: EditorNode): FabricObject {
     path as never,
     {
       ...(rest as unknown as Record<string, unknown>),
+      ...NO_CACHE,
       originX: "left",
       originY: "top",
     } as never,

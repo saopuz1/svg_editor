@@ -99,3 +99,35 @@ export interface ExtractCarlinePreviewResult {
   document: DocumentState;
   previewLabelNodeIds: NodeId[];
 }
+
+// ─── 标记档位 Session 类型 ─────────────────────────────────────────────────
+
+/** 单条档位标记：一条车线节点 + 交点位置 */
+export interface MarkGearSelectedLine {
+  nodeId: NodeId;
+  hitPoint: CanvasPoint;
+}
+
+/** 单档数据（一轮勾选完成后进入 completedGears） */
+export interface MarkGearCompletedGear {
+  /** 档位编号，从 1 开始 */
+  gearNumber: number;
+  selectedLines: MarkGearSelectedLine[];
+}
+
+/** 标记档位 Session 状态 */
+export interface MarkGearSession {
+  type: "标记档位";
+  /** 当前正在勾选的档位编号（1-based） */
+  currentGearNumber: number;
+  /** 当前档位已勾选的线条 */
+  currentLines: MarkGearSelectedLine[];
+  /** 已完成的档位列表 */
+  completedGears: MarkGearCompletedGear[];
+  /**
+   * 所有车线节点 ID 集合（从 document.scene.nodes 中读取
+   * business.type === "车线" 的节点）。
+   * 只有这些节点才允许被勾选。
+   */
+  carlineNodeIds: ReadonlyArray<NodeId>;
+}
