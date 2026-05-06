@@ -4,9 +4,13 @@ import type {
   MarkOddEvenSelectedLine,
   MarkOddEvenSession,
 } from "./businessCommandTypes";
+import { resolveExtractableLineGeometry } from "./extractCarlineGeometry";
 import {
-  resolveExtractableLineGeometry,
-} from "./extractCarlineGeometry";
+  buildBusinessCommandLabelLayout,
+  resolveBusinessCommandAnnotationAnchor,
+  resolveBusinessCommandLabelFontSize,
+  resolveFirstAnnotationFontSize,
+} from "./businessCommandLabelStyle";
 
 const DOUBLE_ANNOTATION_PREFIX = "double-annotation/";
 
@@ -15,6 +19,7 @@ const DOUBLE_ANNOTATION_PREFIX = "double-annotation/";
 function createDoubleAnnotationNode(
   nodeId: NodeId,
   hitPoint: { x: number; y: number },
+  labelFontSize: number,
 ): EditorNode {
   return {
     id: `${DOUBLE_ANNOTATION_PREFIX}${nodeId}`,
@@ -25,16 +30,10 @@ function createDoubleAnnotationNode(
     business: { type: "标注", 字段: "单双", 归属车线Id: nodeId },
     fabricObject: {
       type: "textbox",
-      left: hitPoint.x - 20,
-      top: hitPoint.y - 10,
       text: "双",
       fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
-      fontSize: 18,
       fill: "#111111",
-      width: 40,
-      textAlign: "center",
-      originX: "left",
-      originY: "top",
+      ...buildBusinessCommandLabelLayout("双", hitPoint, labelFontSize),
       selectable: false,
       evented: false,
     },
@@ -47,13 +46,15 @@ function createDoubleAnnotationNode(
  * 计算线条几何中点，用于恢复时的 hitPoint。
  * 取所有线段的中点中最靠近几何中心的那个。
  */
-function resolveLineMidpoint(
-  node: import("../data/types").EditorNode,
-): { x: number; y: number } {
+function resolveLineMidpoint(node: import("../data/types").EditorNode): {
+  x: number;
+  y: number;
+} {
   const geometry = resolveExtractableLineGeometry(node);
   if (!geometry || geometry.segments.length === 0) {
     return {
-      x: typeof node.fabricObject.left === "number" ? node.fabricObject.left : 0,
+      x:
+        typeof node.fabricObject.left === "number" ? node.fabricObject.left : 0,
       y: typeof node.fabricObject.top === "number" ? node.fabricObject.top : 0,
     };
   }
@@ -103,10 +104,7 @@ export function createMarkOddEvenSession(
       ) {
         return {
           nodeId: id,
-          hitPoint: {
-            x: (annotationNode.fabricObject.left as number) + 20,
-            y: (annotationNode.fabricObject.top as number) + 10,
-          },
+          hitPoint: resolveBusinessCommandAnnotationAnchor(annotationNode),
         };
       }
       return {
@@ -115,8 +113,13 @@ export function createMarkOddEvenSession(
       };
     });
 
+  const labelFontSize =
+    resolveFirstAnnotationFontSize(document, "单双") ??
+    resolveBusinessCommandLabelFontSize(document, "单双");
+
   return {
     type: "标记单双",
+    labelFontSize,
     doubleLines,
     carlineNodeIds,
   };
@@ -164,6 +167,28 @@ export function toggleMarkOddEvenLines(
   };
 }
 
+export function updateMarkOddEvenLabelPosition(
+  session: MarkOddEvenSession,
+  nodeId: NodeId,
+  hitPoint: { x: number; y: number },
+): MarkOddEvenSession {
+  let changed = false;
+  const doubleLines = session.doubleLines.map((line) => {
+    if (line.nodeId !== nodeId) {
+      return { ...line, hitPoint: { ...line.hitPoint } };
+    }
+    changed = true;
+    return { ...line, hitPoint: { ...hitPoint } };
+  });
+
+  if (!changed) return session;
+
+  return {
+    ...session,
+    doubleLines,
+  };
+}
+
 // ─── 应用到文档 ──────────────────────────────────────────────────────────────
 
 /**
@@ -186,7 +211,10 @@ export function applyMarkOddEvenSession(
     }),
   );
   const filteredOrder = base.scene.order.filter(
-    (id) => !base.scene.nodes[id] || base.scene.nodes[id]!.business.type !== "标注" || (base.scene.nodes[id]!.business as { 字段?: string }).字段 !== "单双",
+    (id) =>
+      !base.scene.nodes[id] ||
+      base.scene.nodes[id]!.business.type !== "标注" ||
+      (base.scene.nodes[id]!.business as { 字段?: string }).字段 !== "单双",
   );
 
   const nextNodes = { ...filteredNodes };
@@ -207,7 +235,11 @@ export function applyMarkOddEvenSession(
 
   // 为勾选为"双"的车线创建标注节点
   for (const line of doubleLineMap.values()) {
-    const annotationNode = createDoubleAnnotationNode(line.nodeId, line.hitPoint);
+    const annotationNode = createDoubleAnnotationNode(
+      line.nodeId,
+      line.hitPoint,
+      session.labelFontSize,
+    );
     nextNodes[annotationNode.id] = annotationNode;
     nextOrder.push(annotationNode.id);
   }

@@ -1,12 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { BusinessCommandDialog } from "../../../components/BusinessCommandDialog";
-import type { DocumentState } from "../../data/types";
 import type { MarkOddEvenSession } from "../businessCommandTypes";
+import {
+  MAX_BUSINESS_COMMAND_LABEL_FONT_SIZE,
+  MIN_BUSINESS_COMMAND_LABEL_FONT_SIZE,
+  clampBusinessCommandLabelFontSize,
+} from "../businessCommandLabelStyle";
+import { resetDocumentForMarkOddEven } from "../businessCommandReset";
 import {
   applyMarkOddEvenSession,
   createMarkOddEvenSession,
   getMarkOddEvenDoubleNodeIds,
   toggleMarkOddEvenLines,
+  updateMarkOddEvenLabelPosition,
 } from "../markOddEvenSession";
 import {
   BusinessCommandSvgSurface,
@@ -14,44 +20,59 @@ import {
   type SurfaceLabelItem,
   type SvgPoint,
 } from "../surfaces/BusinessCommandSvgSurface";
+import {
+  createBusinessCommandConfirmDialog,
+  type BusinessCommandCanvasHostProps,
+  type BusinessCommandConfirmState,
+} from "./businessCommandHostShared";
 
 const DOUBLE_COLOR = "#2563eb";
 const SINGLE_COLOR = "#6b7280";
-
-const MARK_ODD_EVEN_STEPS = [
-  {
-    title: "标记单双",
-    description:
-      "在车线上点击或刷选，勾选为「双」；再次点击取消。未勾选的车线默认为「单」。",
-  },
-] as const;
 
 export function MarkOddEvenHost({
   open,
   document,
   svgMarkup,
+  viewportTransform,
+  onDocumentChange,
   onClose,
   onCommit,
-}: {
-  open: boolean;
-  document: DocumentState;
-  svgMarkup: string;
-  onClose: () => void;
-  onCommit: (next: DocumentState) => void;
-}) {
+}: BusinessCommandCanvasHostProps) {
   const [session, setSession] = useState<MarkOddEvenSession | null>(null);
-  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [confirmState, setConfirmState] =
+    useState<BusinessCommandConfirmState>(null);
 
   useEffect(() => {
     if (!open) {
       setSession(null);
-      setShowExitConfirm(false);
+      setConfirmState(null);
       return;
     }
     setSession(createMarkOddEvenSession(document));
-    setShowExitConfirm(false);
+    setConfirmState(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  const confirmDialog = useMemo(
+    () =>
+      createBusinessCommandConfirmDialog({
+        confirmState,
+        restartText:
+          "重新开始会清空当前流程以及已经写入画布的单双结果，并回到初始状态。",
+        onCancel: () => setConfirmState(null),
+        onExit: () => {
+          setConfirmState(null);
+          onClose();
+        },
+        onRestart: () => {
+          const nextDocument = resetDocumentForMarkOddEven(document);
+          onDocumentChange(nextDocument);
+          setSession(createMarkOddEvenSession(nextDocument));
+          setConfirmState(null);
+        },
+      }),
+    [confirmState, document, onClose, onDocumentChange],
+  );
 
   // ── 候选节点（仅车线） ───────────────────────────────────────────────────────
 
@@ -62,13 +83,18 @@ export function MarkOddEvenHost({
 
   // ── 高亮图 ──────────────────────────────────────────────────────────────────
 
-  const lineHighlightMap = useMemo<ReadonlyMap<string, LineHighlightInfo>>(() => {
+  const lineHighlightMap = useMemo<
+    ReadonlyMap<string, LineHighlightInfo>
+  >(() => {
     if (!session) return new Map();
     const doubleIds = getMarkOddEvenDoubleNodeIds(session);
     const map = new Map<string, LineHighlightInfo>();
     for (const id of session.carlineNodeIds) {
       const isDouble = doubleIds.has(id);
-      map.set(id, { color: isDouble ? DOUBLE_COLOR : SINGLE_COLOR, isUsed: false });
+      map.set(id, {
+        color: isDouble ? DOUBLE_COLOR : SINGLE_COLOR,
+        isUsed: false,
+      });
     }
     return map;
   }, [session]);
@@ -79,10 +105,12 @@ export function MarkOddEvenHost({
     if (!session) return [];
     return session.doubleLines.map((line) => ({
       key: `odd-even-${line.nodeId}`,
+      nodeId: line.nodeId,
       text: "双",
       x: line.hitPoint.x,
       y: line.hitPoint.y,
       color: DOUBLE_COLOR,
+      fontSize: session.labelFontSize,
     }));
   }, [session]);
 
@@ -122,6 +150,29 @@ export function MarkOddEvenHost({
           <div className="businessDialogHint extractCarlineHint">
             点击或拖动刷选车线，勾选为「双」（蓝色）；再次点击取消。未勾选线条默认为「单」（灰色）。
           </div>
+
+          <div className="row extractCarlineAreaNameRow">
+            <div className="label">单双字号</div>
+            <input
+              className="input"
+              type="number"
+              min={MIN_BUSINESS_COMMAND_LABEL_FONT_SIZE}
+              max={MAX_BUSINESS_COMMAND_LABEL_FONT_SIZE}
+              value={session.labelFontSize}
+              onChange={(event) => {
+                setSession((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        labelFontSize: clampBusinessCommandLabelFontSize(
+                          Number(event.currentTarget.value),
+                        ),
+                      }
+                    : prev,
+                );
+              }}
+            />
+          </div>
         </div>
 
         <div className="businessDialogSection extractCarlinePanelSection">
@@ -155,7 +206,14 @@ export function MarkOddEvenHost({
           <button
             type="button"
             className="btn"
-            onClick={() => setShowExitConfirm(true)}
+            onClick={() => setConfirmState("restart")}
+          >
+            重新开始
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setConfirmState("exit")}
           >
             退出
           </button>
@@ -178,9 +236,17 @@ export function MarkOddEvenHost({
       <BusinessCommandSvgSurface
         document={document}
         svgMarkup={svgMarkup}
+        viewportTransform={viewportTransform}
         candidateNodeIds={candidateNodeIds}
         lineHighlightMap={lineHighlightMap}
         previewLabels={previewLabels}
+        onMoveLabel={(nodeId, markerPos) => {
+          setSession((prev) =>
+            prev
+              ? updateMarkOddEvenLabelPosition(prev, nodeId, markerPos)
+              : prev,
+          );
+        }}
         onToggleLine={(nodeId: string, markerPos: SvgPoint) => {
           setSession((prev) =>
             prev
@@ -195,18 +261,8 @@ export function MarkOddEvenHost({
         open={open}
         title="标记单双"
         summary="勾选车线标记为双，未勾选默认为单。"
-        steps={MARK_ODD_EVEN_STEPS}
-        currentStep={0}
-        showExitConfirm={showExitConfirm}
-        onPrev={() => {}}
-        onNext={() => {}}
-        onFinish={() => {}}
-        onRequestClose={() => setShowExitConfirm(true)}
-        onCancelExit={() => setShowExitConfirm(false)}
-        onConfirmExit={() => {
-          setShowExitConfirm(false);
-          onClose();
-        }}
+        confirmDialog={confirmDialog}
+        onRequestClose={() => setConfirmState("exit")}
         bodyContent={bodyContent}
         footerContent={footerContent}
       />

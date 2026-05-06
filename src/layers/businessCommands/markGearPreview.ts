@@ -3,6 +3,7 @@ import type {
   MarkGearSelectedLine,
   MarkGearSession,
 } from "./businessCommandTypes";
+import { buildBusinessCommandLabelLayout } from "./businessCommandLabelStyle";
 
 const PREVIEW_GEAR_LABEL_PREFIX = "__preview__/mark-gear/label/";
 
@@ -31,6 +32,7 @@ function createGearPreviewLabelNode(
   nodeId: NodeId,
   gearNumber: number,
   hitPoint: { x: number; y: number },
+  labelFontSize: number,
 ): EditorNode {
   return {
     id: `${PREVIEW_GEAR_LABEL_PREFIX}${nodeId}/gear${gearNumber}`,
@@ -42,16 +44,14 @@ function createGearPreviewLabelNode(
     business: { type: "标注", 字段: "档位", 归属车线Id: nodeId },
     fabricObject: {
       type: "textbox",
-      left: hitPoint.x - 20,
-      top: hitPoint.y - 10,
       text: String(gearNumber),
       fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
-      fontSize: 18,
       fill: "#111111",
-      width: 40,
-      textAlign: "center",
-      originX: "left",
-      originY: "top",
+      ...buildBusinessCommandLabelLayout(
+        String(gearNumber),
+        hitPoint,
+        labelFontSize,
+      ),
       selectable: false,
       evented: false,
     },
@@ -73,28 +73,34 @@ export function buildMarkGearPreviewDocument(
   const nextOrder = [...next.scene.order];
 
   // 收集所有档位（已完成 + 当前）
-  const allGears: Array<{ gearNumber: number; lines: MarkGearSelectedLine[] }> =
-    [
-      ...session.completedGears.map((g) => ({
-        gearNumber: g.gearNumber,
-        lines: g.selectedLines,
-      })),
-      ...(session.currentLines.length > 0
-        ? [
-            {
-              gearNumber: session.currentGearNumber,
-              lines: session.currentLines,
-            },
-          ]
-        : []),
-    ];
+  const allGears: Array<{
+    gearNumber: number;
+    labelFontSize: number;
+    lines: MarkGearSelectedLine[];
+  }> = [
+    ...session.completedGears.map((g) => ({
+      gearNumber: g.gearNumber,
+      labelFontSize: g.labelFontSize,
+      lines: g.selectedLines,
+    })),
+    ...(session.currentLines.length > 0
+      ? [
+          {
+            gearNumber: session.currentGearNumber,
+            labelFontSize: session.currentLabelFontSize,
+            lines: session.currentLines,
+          },
+        ]
+      : []),
+  ];
 
-  for (const { gearNumber, lines } of allGears) {
+  for (const { gearNumber, labelFontSize, lines } of allGears) {
     for (const line of lines) {
       const labelNode = createGearPreviewLabelNode(
         line.nodeId,
         gearNumber,
         line.hitPoint,
+        labelFontSize,
       );
       next.scene.nodes[labelNode.id] = labelNode;
       previewLabelNodeIds.push(labelNode.id);

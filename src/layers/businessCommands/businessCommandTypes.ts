@@ -65,6 +65,7 @@ export interface ExtractCarlineAreaOptionDraft {
   presetId: AreaPresetId;
   areaName: string;
   carlineLength: number;
+  labelFontSize: number;
 }
 
 export interface ExtractCarlineSelectedLine {
@@ -76,6 +77,7 @@ export interface ExtractCarlineAreaDraft {
   areaName: string;
   presetId: AreaPresetId;
   carlineLength: number;
+  labelFontSize: number;
   selectedLines: ExtractCarlineSelectedLine[];
 }
 
@@ -96,6 +98,7 @@ export interface PreviewLabelNodeSpec {
   text: string;
   position: CanvasPoint;
   areaName: string;
+  fontSize: number;
 }
 
 export interface ExtractCarlinePreviewResult {
@@ -115,6 +118,7 @@ export interface MarkGearSelectedLine {
 export interface MarkGearCompletedGear {
   /** 档位编号，从 1 开始 */
   gearNumber: number;
+  labelFontSize: number;
   selectedLines: MarkGearSelectedLine[];
 }
 
@@ -123,6 +127,8 @@ export interface MarkGearSession {
   type: "标记档位";
   /** 当前正在勾选的档位编号（1-based） */
   currentGearNumber: number;
+  /** 当前档位标注字号 */
+  currentLabelFontSize: number;
   /** 当前档位已勾选的线条 */
   currentLines: MarkGearSelectedLine[];
   /** 已完成的档位列表 */
@@ -146,6 +152,8 @@ export interface MarkOddEvenSelectedLine {
 /** 标记单双 Session 状态 */
 export interface MarkOddEvenSession {
   type: "标记单双";
+  /** 当前单双标注字号 */
+  labelFontSize: number;
   /** 被勾选为"双"的线条列表 */
   doubleLines: MarkOddEvenSelectedLine[];
   /** 所有车线节点 ID（只有这些允许被勾选） */

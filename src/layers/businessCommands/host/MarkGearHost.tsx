@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { BusinessCommandDialog } from "../../../components/BusinessCommandDialog";
-import type { DocumentState } from "../../data/types";
 import type { MarkGearSession } from "../businessCommandTypes";
+import {
+  MAX_BUSINESS_COMMAND_LABEL_FONT_SIZE,
+  MIN_BUSINESS_COMMAND_LABEL_FONT_SIZE,
+  clampBusinessCommandLabelFontSize,
+} from "../businessCommandLabelStyle";
+import { resetDocumentForMarkGear } from "../businessCommandReset";
 import { applyMarkGearSession, getGearColor } from "../markGearPreview";
 import {
   canAdvanceToNextGear,
@@ -11,6 +16,7 @@ import {
   getMarkGearHittableNodeIds,
   getMarkGearUsedNodeIds,
   toggleMarkGearLines,
+  updateMarkGearLabelPosition,
 } from "../markGearSession";
 import {
   BusinessCommandSvgSurface,
@@ -18,48 +24,64 @@ import {
   type SurfaceLabelItem,
   type SvgPoint,
 } from "../surfaces/BusinessCommandSvgSurface";
+import {
+  createBusinessCommandConfirmDialog,
+  type BusinessCommandCanvasHostProps,
+  type BusinessCommandConfirmState,
+} from "./businessCommandHostShared";
 
 // 档位颜色从 markGearPreview 统一导入，预览与最终标注色保持一致
-
-const MARK_GEAR_STEPS = [
-  {
-    title: "标记档位",
-    description:
-      "在车线上逐档刷选，每档完成后点击「下一档」，所有车线都标记后才能完成。",
-  },
-] as const;
 
 export function MarkGearHost({
   open,
   document,
   svgMarkup,
+  viewportTransform,
+  onDocumentChange,
   onClose,
   onCommit,
-}: {
-  open: boolean;
-  document: DocumentState;
-  svgMarkup: string;
-  onClose: () => void;
-  onCommit: (next: DocumentState) => void;
-}) {
+}: BusinessCommandCanvasHostProps) {
   const [session, setSession] = useState<MarkGearSession | null>(null);
   const [gearError, setGearError] = useState("");
-  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [confirmState, setConfirmState] =
+    useState<BusinessCommandConfirmState>(null);
 
   // 开启时初始化 session
   useEffect(() => {
     if (!open) {
       setSession(null);
       setGearError("");
-      setShowExitConfirm(false);
+      setConfirmState(null);
       return;
     }
     setSession(createMarkGearSession(document));
     setGearError("");
-    setShowExitConfirm(false);
+    setConfirmState(null);
     // 只在 open 变化时重建 session，不依赖 document 变化
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  const confirmDialog = useMemo(
+    () =>
+      createBusinessCommandConfirmDialog({
+        confirmState,
+        restartText:
+          "重新开始会清空当前流程以及已经写入画布的档位结果，并回到初始状态。",
+        onCancel: () => setConfirmState(null),
+        onExit: () => {
+          setConfirmState(null);
+          onClose();
+        },
+        onRestart: () => {
+          const nextDocument = resetDocumentForMarkGear(document);
+          onDocumentChange(nextDocument);
+          setSession(createMarkGearSession(nextDocument));
+          setGearError("");
+          setConfirmState(null);
+        },
+      }),
+    [confirmState, document, onClose, onDocumentChange],
+  );
 
   // ── 派生状态 ────────────────────────────────────────────────────────────────
 
@@ -103,10 +125,12 @@ export function MarkGearHost({
       for (const line of gear.selectedLines) {
         labels.push({
           key: `gear${gear.gearNumber}-${line.nodeId}`,
+          nodeId: line.nodeId,
           text: String(gear.gearNumber),
           x: line.hitPoint.x,
           y: line.hitPoint.y,
           color,
+          fontSize: gear.labelFontSize,
         });
       }
     }
@@ -115,10 +139,12 @@ export function MarkGearHost({
     for (const line of session.currentLines) {
       labels.push({
         key: `gear${session.currentGearNumber}-${line.nodeId}`,
+        nodeId: line.nodeId,
         text: String(session.currentGearNumber),
         x: line.hitPoint.x,
         y: line.hitPoint.y,
         color: currentColor,
+        fontSize: session.currentLabelFontSize,
       });
     }
     return labels;
@@ -166,6 +192,29 @@ export function MarkGearHost({
                 {markedCarlines} / {totalCarlines}
               </div>
             </div>
+          </div>
+
+          <div className="row extractCarlineAreaNameRow">
+            <div className="label">本档字号</div>
+            <input
+              className="input"
+              type="number"
+              min={MIN_BUSINESS_COMMAND_LABEL_FONT_SIZE}
+              max={MAX_BUSINESS_COMMAND_LABEL_FONT_SIZE}
+              value={session.currentLabelFontSize}
+              onChange={(event) => {
+                setSession((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        currentLabelFontSize: clampBusinessCommandLabelFontSize(
+                          Number(event.currentTarget.value),
+                        ),
+                      }
+                    : prev,
+                );
+              }}
+            />
           </div>
 
           <div className="businessDialogHint extractCarlineHint">
@@ -222,7 +271,9 @@ export function MarkGearHost({
                     >
                       {gear.gearNumber} 档
                     </span>
-                    <span>{gear.selectedLines.length} 条线</span>
+                    <span>
+                      {gear.selectedLines.length} 条线 / {gear.labelFontSize}px
+                    </span>
                   </div>
                 ))
               ) : (
@@ -252,7 +303,14 @@ export function MarkGearHost({
           <button
             type="button"
             className="btn"
-            onClick={() => setShowExitConfirm(true)}
+            onClick={() => setConfirmState("restart")}
+          >
+            重新开始
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setConfirmState("exit")}
           >
             退出
           </button>
@@ -316,9 +374,15 @@ export function MarkGearHost({
       <BusinessCommandSvgSurface
         document={document}
         svgMarkup={svgMarkup}
+        viewportTransform={viewportTransform}
         candidateNodeIds={candidateNodeIds}
         lineHighlightMap={lineHighlightMap}
         previewLabels={previewLabels}
+        onMoveLabel={(nodeId, markerPos) => {
+          setSession((prev) =>
+            prev ? updateMarkGearLabelPosition(prev, nodeId, markerPos) : prev,
+          );
+        }}
         onToggleLine={(nodeId: string, markerPos: SvgPoint) => {
           setSession((prev) =>
             prev
@@ -338,18 +402,8 @@ export function MarkGearHost({
         open={open}
         title="标记档位"
         summary="在车线上逐档勾选，所有车线全部标记完成后才能提交。"
-        steps={MARK_GEAR_STEPS}
-        currentStep={0}
-        showExitConfirm={showExitConfirm}
-        onPrev={() => {}}
-        onNext={() => {}}
-        onFinish={() => {}}
-        onRequestClose={() => setShowExitConfirm(true)}
-        onCancelExit={() => setShowExitConfirm(false)}
-        onConfirmExit={() => {
-          setShowExitConfirm(false);
-          onClose();
-        }}
+        confirmDialog={confirmDialog}
+        onRequestClose={() => setConfirmState("exit")}
         bodyContent={bodyContent}
         footerContent={footerContent}
       />

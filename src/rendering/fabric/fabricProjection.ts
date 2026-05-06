@@ -182,9 +182,10 @@ export function readNodeStringProp(
 function isNodeVisible(node: EditorNode, viewState: ViewState) {
   if (node.hidden) return false;
 
-  if (node.business.type === "普通" || node.business.type === "非标注") {
+  if (node.business.type === "普通") {
     return true;
   }
+  if (node.business.type === "非标注") return viewState.文本.原文本;
   if (node.business.type === "非车线") return viewState.线条.非车线;
   if (node.business.type === "车线") return viewState.线条.车线;
   if (node.business.type === "标注") {

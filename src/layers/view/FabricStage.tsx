@@ -10,6 +10,7 @@ import {
   ActiveSelection,
   Canvas,
   FabricObject,
+  Point,
   Shadow,
   StaticCanvas,
 } from "fabric";
@@ -38,6 +39,15 @@ export interface FabricStageApi {
   exportJson(): string;
   importSvg(svg: string): Promise<void>;
 }
+
+export type FabricViewportTransform = [
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+];
 
 const SELECTED_SHADOW = new Shadow({
   color: "rgba(37, 99, 235, 0.32)",
@@ -85,14 +95,45 @@ function getCanvasSelectionIds(canvas: Canvas) {
     .filter((id): id is string => Boolean(id));
 }
 
+const MIN_ZOOM = 0.2;
+const MAX_ZOOM = 8;
+const ZOOM_SENSITIVITY = 0.999;
+
 function isPanGesture(evt: MouseEvent) {
-  return evt.button === 1 && (evt.ctrlKey || evt.metaKey);
+  return evt.button === 1;
+}
+
+function isMacZoomGesture(evt: WheelEvent) {
+  const platform = globalThis.navigator?.platform ?? "";
+  const userAgent = globalThis.navigator?.userAgent ?? "";
+  const isMacPlatform = /Mac|iPhone|iPad|iPod/i.test(platform + userAgent);
+  return isMacPlatform ? evt.metaKey : evt.ctrlKey;
+}
+
+function clampZoom(zoom: number) {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+}
+
+function cloneViewportTransform(
+  transform: FabricViewportTransform,
+): FabricViewportTransform {
+  return [...transform] as FabricViewportTransform;
 }
 
 function asMouseEvent(evt: Event | undefined): MouseEvent | null {
   if (!(evt instanceof MouseEvent)) return null;
   return evt;
 }
+
+function asWheelEvent(evt: Event | undefined): WheelEvent | null {
+  if (!(evt instanceof WheelEvent)) return null;
+  return evt;
+}
+
+type FabricMouseWheelEvent = {
+  e?: Event;
+  viewportPoint?: Point;
+};
 
 function buildExportSvg(document: DocumentState, viewState: ViewState) {
   const exportEl = globalThis.document.createElement("canvas");
@@ -157,6 +198,7 @@ export const FabricStage = forwardRef<
     activeToolId: ToolId;
     viewState: ViewState;
     businessCommandActive?: boolean;
+    onViewportTransformChange?: (transform: FabricViewportTransform) => void;
   }
 >(function FabricStage(
   {
@@ -166,6 +208,7 @@ export const FabricStage = forwardRef<
     activeToolId,
     viewState,
     businessCommandActive = false,
+    onViewportTransformChange,
   },
   ref,
 ) {
@@ -175,9 +218,9 @@ export const FabricStage = forwardRef<
   const backgroundMapRef = useRef<Map<NodeId, FabricObject>>(new Map());
   const lastSelectionRef = useRef<string>("");
   const suppressSelectionSyncRef = useRef(false);
-  const viewportTransformRef = useRef<
-    [number, number, number, number, number, number]
-  >([1, 0, 0, 1, 0, 0]);
+  const viewportTransformRef = useRef<FabricViewportTransform>([
+    1, 0, 0, 1, 0, 0,
+  ]);
   const panningRef = useRef<{
     active: boolean;
     lastX: number;
@@ -249,7 +292,12 @@ export const FabricStage = forwardRef<
       { width: `${canvasSize.width}px`, height: `${canvasSize.height}px` },
       { cssOnly: true },
     );
-    canvas.setViewportTransform([...viewportTransformRef.current]);
+    canvas.setViewportTransform(
+      cloneViewportTransform(viewportTransformRef.current),
+    );
+    onViewportTransformChange?.(
+      cloneViewportTransform(viewportTransformRef.current),
+    );
     canvas.uniformScaling = false;
     fabricRef.current = canvas;
     setReady(true);
@@ -299,18 +347,35 @@ export const FabricStage = forwardRef<
       panningRef.current.lastX = nativeEvent.clientX;
       panningRef.current.lastY = nativeEvent.clientY;
 
-      const next = [...viewportTransformRef.current] as [
-        number,
-        number,
-        number,
-        number,
-        number,
-        number,
-      ];
+      const next = cloneViewportTransform(viewportTransformRef.current);
       next[4] += dx;
       next[5] += dy;
       viewportTransformRef.current = next;
       canvas.setViewportTransform(next);
+      onViewportTransformChange?.(cloneViewportTransform(next));
+      canvas.requestRenderAll();
+    };
+
+    const handleMouseWheel = (evt: FabricMouseWheelEvent) => {
+      const nativeEvent = asWheelEvent(evt.e);
+      if (!nativeEvent || !isMacZoomGesture(nativeEvent)) return;
+
+      nativeEvent.preventDefault();
+      nativeEvent.stopPropagation();
+
+      const nextZoom = clampZoom(
+        canvas.getZoom() * Math.pow(ZOOM_SENSITIVITY, nativeEvent.deltaY),
+      );
+      const zoomPoint =
+        evt.viewportPoint ??
+        new Point(nativeEvent.offsetX, nativeEvent.offsetY);
+      canvas.zoomToPoint(zoomPoint, nextZoom);
+      viewportTransformRef.current = cloneViewportTransform(
+        canvas.viewportTransform as FabricViewportTransform,
+      );
+      onViewportTransformChange?.(
+        cloneViewportTransform(viewportTransformRef.current),
+      );
       canvas.requestRenderAll();
     };
 
@@ -336,6 +401,7 @@ export const FabricStage = forwardRef<
 
     canvas.on("mouse:down", handleMouseDown);
     canvas.on("mouse:move", handleMouseMove);
+    canvas.on("mouse:wheel", handleMouseWheel);
     canvas.on("mouse:up", stopPanning);
     window.addEventListener("mouseup", stopPanning);
     canvas.upperCanvasEl.addEventListener("mousedown", preventMiddleAutoScroll);
@@ -344,6 +410,7 @@ export const FabricStage = forwardRef<
     return () => {
       canvas.off("mouse:down", handleMouseDown);
       canvas.off("mouse:move", handleMouseMove);
+      canvas.off("mouse:wheel", handleMouseWheel);
       canvas.off("mouse:up", stopPanning);
       window.removeEventListener("mouseup", stopPanning);
       canvas.upperCanvasEl.removeEventListener(
@@ -360,7 +427,7 @@ export const FabricStage = forwardRef<
       objectMapRef.current.clear();
       backgroundMapRef.current.clear();
     };
-  }, [canvasSize, editor]);
+  }, [canvasSize, editor, onViewportTransformChange]);
 
   useEffect(() => {
     const canvas = fabricRef.current;
@@ -385,7 +452,9 @@ export const FabricStage = forwardRef<
       { cssOnly: true },
     );
     canvas.set({ backgroundColor: document.canvas.backgroundColor });
-    canvas.setViewportTransform([...viewportTransformRef.current]);
+    canvas.setViewportTransform(
+      cloneViewportTransform(viewportTransformRef.current),
+    );
 
     const objectMap = objectMapRef.current;
     const backgroundMap = backgroundMapRef.current;

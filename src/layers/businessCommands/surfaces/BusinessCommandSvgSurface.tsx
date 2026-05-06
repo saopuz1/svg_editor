@@ -19,10 +19,21 @@ const CLICK_HIT_THRESHOLD_SVG = 12;
  * 超过此距离立即切换为笔刷模式，无需等待延迟。
  */
 const BRUSH_ACTIVATE_DISTANCE = 6;
+const LABEL_DRAG_HOLD_MS = 140;
+const LABEL_DRAG_CANCEL_DISTANCE = 6;
 
 // ─── 类型 ────────────────────────────────────────────────────────────────────
 
 export type SvgPoint = { x: number; y: number };
+
+export type SurfaceViewportTransform = [
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+];
 
 export type LineHighlightInfo = {
   color: string;
@@ -32,10 +43,12 @@ export type LineHighlightInfo = {
 
 export type SurfaceLabelItem = {
   key: string;
+  nodeId: string;
   text: string;
   x: number;
   y: number;
   color: string;
+  fontSize: number;
 };
 
 // ─── SVG 标注工具 ─────────────────────────────────────────────────────────────
@@ -56,7 +69,9 @@ function annotateSvgMarkup(svgMarkup: string, document: DocumentState) {
     `0 0 ${document.canvas.width} ${document.canvas.height}`,
   );
 
-  const exportedElements = Array.from(svg.querySelectorAll("line, path"));
+  const exportedElements = Array.from(
+    svg.querySelectorAll<SVGElement>("line, path"),
+  );
 
   let elementIndex = 0;
   for (const id of document.scene.order) {
@@ -71,8 +86,9 @@ function annotateSvgMarkup(svgMarkup: string, document: DocumentState) {
     const element = exportedElements[elementIndex];
     if (!element) break;
 
-    const stroke = element.getAttribute("stroke") ?? "";
-    const strokeWidth = element.getAttribute("stroke-width") ?? "";
+    const stroke = element.style.stroke || element.getAttribute("stroke") || "";
+    const strokeWidth =
+      element.style.strokeWidth || element.getAttribute("stroke-width") || "";
     element.setAttribute("data-business-command-line", "true");
     element.setAttribute("data-node-id", node.id);
     element.setAttribute("data-original-stroke", stroke);
@@ -88,18 +104,63 @@ function annotateSvgMarkup(svgMarkup: string, document: DocumentState) {
 
 // ─── 坐标转换 ─────────────────────────────────────────────────────────────────
 
-function clientToSvgPoint(
-  svgRoot: SVGSVGElement,
+function mapPointWithTransform(
+  point: SvgPoint,
+  transform: SurfaceViewportTransform,
+): SvgPoint {
+  return {
+    x: transform[0] * point.x + transform[2] * point.y + transform[4],
+    y: transform[1] * point.x + transform[3] * point.y + transform[5],
+  };
+}
+
+function invertViewportTransform(
+  transform: SurfaceViewportTransform,
+): SurfaceViewportTransform | null {
+  const [a, b, c, d, e, f] = transform;
+  const determinant = a * d - b * c;
+  if (Math.abs(determinant) < 1e-8) return null;
+
+  return [
+    d / determinant,
+    -b / determinant,
+    -c / determinant,
+    a / determinant,
+    (c * f - d * e) / determinant,
+    (b * e - a * f) / determinant,
+  ];
+}
+
+function clientToViewportPoint(
+  surface: HTMLDivElement,
   clientX: number,
   clientY: number,
+  document: DocumentState,
 ): SvgPoint | null {
-  const point = svgRoot.createSVGPoint();
-  point.x = clientX;
-  point.y = clientY;
-  const ctm = svgRoot.getScreenCTM();
-  if (!ctm) return null;
-  const transformed = point.matrixTransform(ctm.inverse());
-  return { x: transformed.x, y: transformed.y };
+  const rect = surface.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+
+  return {
+    x: ((clientX - rect.left) / rect.width) * document.canvas.width,
+    y: ((clientY - rect.top) / rect.height) * document.canvas.height,
+  };
+}
+
+function clientToSvgPoint(
+  surface: HTMLDivElement,
+  clientX: number,
+  clientY: number,
+  document: DocumentState,
+  inverseViewportTransform: SurfaceViewportTransform | null,
+): SvgPoint | null {
+  const viewportPoint = clientToViewportPoint(
+    surface,
+    clientX,
+    clientY,
+    document,
+  );
+  if (!viewportPoint || !inverseViewportTransform) return null;
+  return mapPointWithTransform(viewportPoint, inverseViewportTransform);
 }
 
 // ─── 几何命中（单击） ─────────────────────────────────────────────────────────
@@ -110,13 +171,21 @@ function clientToSvgPoint(
  * 比 elementsFromPoint 宽容得多，能命中 1px 细线。
  */
 function hitTestSingleClick(
-  svgRoot: SVGSVGElement,
+  surface: HTMLDivElement,
   clientX: number,
   clientY: number,
+  document: DocumentState,
+  inverseViewportTransform: SurfaceViewportTransform | null,
   candidateNodes: EditorNode[],
   visitedIds: Set<string>,
 ): { nodeId: string; hitPoint: SvgPoint } | null {
-  const svgPoint = clientToSvgPoint(svgRoot, clientX, clientY);
+  const svgPoint = clientToSvgPoint(
+    surface,
+    clientX,
+    clientY,
+    document,
+    inverseViewportTransform,
+  );
   if (!svgPoint) return null;
 
   const hits = findNearbyLines(
@@ -166,12 +235,20 @@ function hitTestBrushSegment(
  * 阈值稍大，用于视觉提示。
  */
 function resolveHoveredLineId(
-  svgRoot: SVGSVGElement,
+  surface: HTMLDivElement,
   clientX: number,
   clientY: number,
   candidateNodes: EditorNode[],
+  document: DocumentState,
+  inverseViewportTransform: SurfaceViewportTransform | null,
 ): string | null {
-  const svgPoint = clientToSvgPoint(svgRoot, clientX, clientY);
+  const svgPoint = clientToSvgPoint(
+    surface,
+    clientX,
+    clientY,
+    document,
+    inverseViewportTransform,
+  );
   if (!svgPoint) return null;
   const hits = findNearbyLines(
     svgPoint,
@@ -186,13 +263,16 @@ function resolveHoveredLineId(
 export function BusinessCommandSvgSurface({
   document,
   svgMarkup,
+  viewportTransform,
   candidateNodeIds,
   lineHighlightMap,
   previewLabels,
   onToggleLine,
+  onMoveLabel,
 }: {
   document: DocumentState;
   svgMarkup: string;
+  viewportTransform: SurfaceViewportTransform;
   /** 只有这些节点才会被命中（过滤用） */
   candidateNodeIds: ReadonlySet<string>;
   /** 节点高亮信息：key = nodeId，value = 颜色与锁定状态 */
@@ -200,6 +280,7 @@ export function BusinessCommandSvgSurface({
   /** 叠加在 SVG 上方的数字标签列表 */
   previewLabels: SurfaceLabelItem[];
   onToggleLine: (nodeId: string, markerPos: SvgPoint) => void;
+  onMoveLabel?: (nodeId: string, markerPos: SvgPoint) => void;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -220,12 +301,37 @@ export function BusinessCommandSvgSurface({
 
   const [hoveredLineId, setHoveredLineId] = useState<string | null>(null);
   const [brushPath, setBrushPath] = useState<SvgPoint[]>([]);
+  const [draggingLabelNodeId, setDraggingLabelNodeId] = useState<string | null>(
+    null,
+  );
+
+  const labelHoldTimerRef = useRef<number | null>(null);
+  const labelPressRef = useRef<{
+    pointerId: number;
+    nodeId: string;
+    clientPoint: SvgPoint;
+  } | null>(null);
+  const labelDragRef = useRef<{
+    pointerId: number;
+    nodeId: string;
+  } | null>(null);
 
   // ── 派生数据 ────────────────────────────────────────────────────────────────
 
   const annotatedMarkup = useMemo(
     () => annotateSvgMarkup(svgMarkup, document),
     [document, svgMarkup],
+  );
+  const inverseViewportTransform = useMemo(
+    () => invertViewportTransform(viewportTransform),
+    [viewportTransform],
+  );
+  const surfaceTransformStyle = useMemo(
+    () => ({
+      transform: `matrix(${viewportTransform.join(",")})`,
+      transformOrigin: "top left",
+    }),
+    [viewportTransform],
   );
 
   /** 过滤出 candidateNodeIds 包含的 line/path 节点列表（几何命中用） */
@@ -256,7 +362,9 @@ export function BusinessCommandSvgSurface({
       const originalStroke =
         element.getAttribute("data-original-stroke") || "#111827";
       const originalWidth =
-        Number(element.getAttribute("data-original-stroke-width") || "1") || 1;
+        Number.parseFloat(
+          element.getAttribute("data-original-stroke-width") || "1",
+        ) || 1;
       const lineInfo = lineHighlightMap.get(nodeId);
       const isUsed = lineInfo?.isUsed ?? false; // 已锁定（已完成区域）
       const isCurrentSelected = Boolean(lineInfo && !lineInfo.isUsed); // 当前区域已勾选
@@ -264,22 +372,23 @@ export function BusinessCommandSvgSurface({
       const isIdle = !isUsed && !isCurrentSelected && !isHovered; // 未选中普通线条
 
       // ── stroke 颜色 ───────────────────────────────────────────────────────
-      element.setAttribute("stroke", lineInfo?.color || originalStroke);
+      const strokeColor = lineInfo?.color || originalStroke;
+      element.setAttribute("stroke", strokeColor);
+      element.style.stroke = strokeColor;
 
-      // ── stroke 宽度：已选/悬停显著加粗，普通线条保持原宽 ────────────────
+      // ── stroke 宽度：颜色态不加粗，仅悬停时保留轻度提示 ────────────────
       let width: number;
       if (isCurrentSelected) {
-        // 至少 3.5px，或原宽 ×2.2，取更大值——让细线也明显可见
-        width = Math.max(originalWidth * 2.2, 3.5);
+        width = originalWidth;
       } else if (isHovered) {
         width = Math.max(originalWidth * 1.6, 2.5);
       } else if (isUsed) {
-        // 已锁定区域：略粗，用颜色区分
-        width = Math.max(originalWidth * 1.4, 2);
+        width = originalWidth;
       } else {
         width = originalWidth;
       }
       element.setAttribute("stroke-width", String(width));
+      element.style.strokeWidth = String(width);
 
       // ── 透明度：未选中线条压暗，已选/悬停全亮，形成强对比 ────────────────
       let opacity: string;
@@ -296,17 +405,11 @@ export function BusinessCommandSvgSurface({
         opacity = "0.86";
       }
       element.setAttribute("opacity", opacity);
-
-      element.classList.toggle("businessCommandLineCurrent", isCurrentSelected);
-      element.classList.toggle("businessCommandLineUsed", isUsed);
-      element.classList.toggle("businessCommandLineHover", isHovered);
+      element.style.opacity = opacity;
     });
   }, [annotatedMarkup, lineHighlightMap, hoveredLineId]);
 
   // ── 手势辅助 ─────────────────────────────────────────────────────────────────
-
-  const getSvgRoot = () =>
-    rootRef.current?.querySelector<SVGSVGElement>("svg") ?? null;
 
   const clearGestureState = () => {
     activePointerIdRef.current = null;
@@ -319,9 +422,46 @@ export function BusinessCommandSvgSurface({
     setBrushPath([]);
   };
 
-  const activateBrushMode = (svgRoot: SVGSVGElement, clientPoint: SvgPoint) => {
+  const clearLabelHoldTimer = () => {
+    if (labelHoldTimerRef.current != null) {
+      window.clearTimeout(labelHoldTimerRef.current);
+      labelHoldTimerRef.current = null;
+    }
+  };
+
+  const clearLabelDragState = () => {
+    clearLabelHoldTimer();
+    labelPressRef.current = null;
+    labelDragRef.current = null;
+    setDraggingLabelNodeId(null);
+  };
+
+  const updateDraggedLabel = (nodeId: string, clientPoint: SvgPoint) => {
+    const surface = rootRef.current;
+    if (!surface || !onMoveLabel) return;
+    const markerPos = clientToSvgPoint(
+      surface,
+      clientPoint.x,
+      clientPoint.y,
+      document,
+      inverseViewportTransform,
+    );
+    if (!markerPos) return;
+    onMoveLabel(nodeId, markerPos);
+  };
+
+  const activateBrushMode = (
+    surface: HTMLDivElement,
+    clientPoint: SvgPoint,
+  ) => {
     brushModeRef.current = true;
-    const svgPoint = clientToSvgPoint(svgRoot, clientPoint.x, clientPoint.y);
+    const svgPoint = clientToSvgPoint(
+      surface,
+      clientPoint.x,
+      clientPoint.y,
+      document,
+      inverseViewportTransform,
+    );
     if (svgPoint) {
       brushSvgPathRef.current = [svgPoint];
       setBrushPath([svgPoint]);
@@ -348,22 +488,26 @@ export function BusinessCommandSvgSurface({
         pressStartRef.current = clientPoint;
         lastClientPointRef.current = clientPoint;
 
-        const svgRoot = getSvgRoot();
-        if (svgRoot) {
+        const surface = rootRef.current;
+        if (surface) {
           const svgPoint = clientToSvgPoint(
-            svgRoot,
+            surface,
             clientPoint.x,
             clientPoint.y,
+            document,
+            inverseViewportTransform,
           );
           lastSvgPointRef.current = svgPoint;
 
           // 更新悬停高亮
           setHoveredLineId(
             resolveHoveredLineId(
-              svgRoot,
+              surface,
               clientPoint.x,
               clientPoint.y,
               candidateNodes,
+              document,
+              inverseViewportTransform,
             ),
           );
         }
@@ -376,14 +520,16 @@ export function BusinessCommandSvgSurface({
 
         // 非激活 pointer：只更新悬停高亮
         if (activePointerIdRef.current !== event.pointerId) {
-          const svgRoot = getSvgRoot();
-          if (svgRoot) {
+          const surface = rootRef.current;
+          if (surface) {
             setHoveredLineId(
               resolveHoveredLineId(
-                svgRoot,
+                surface,
                 current.x,
                 current.y,
                 candidateNodes,
+                document,
+                inverseViewportTransform,
               ),
             );
           }
@@ -396,8 +542,8 @@ export function BusinessCommandSvgSurface({
           return;
         }
 
-        const svgRoot = getSvgRoot();
-        if (!svgRoot) {
+        const surface = rootRef.current;
+        if (!surface) {
           lastClientPointRef.current = current;
           return;
         }
@@ -411,11 +557,17 @@ export function BusinessCommandSvgSurface({
             current.y - pressStart.y,
           );
           if (travelDistance > BRUSH_ACTIVATE_DISTANCE) {
-            activateBrushMode(svgRoot, pressStart);
+            activateBrushMode(surface, pressStart);
           }
         }
 
-        const curSvgPoint = clientToSvgPoint(svgRoot, current.x, current.y);
+        const curSvgPoint = clientToSvgPoint(
+          surface,
+          current.x,
+          current.y,
+          document,
+          inverseViewportTransform,
+        );
         if (!curSvgPoint) {
           lastClientPointRef.current = current;
           return;
@@ -447,7 +599,14 @@ export function BusinessCommandSvgSurface({
         lastSvgPointRef.current = curSvgPoint;
 
         setHoveredLineId(
-          resolveHoveredLineId(svgRoot, current.x, current.y, candidateNodes),
+          resolveHoveredLineId(
+            surface,
+            current.x,
+            current.y,
+            candidateNodes,
+            document,
+            inverseViewportTransform,
+          ),
         );
       }}
       onPointerUp={(event) => {
@@ -463,12 +622,14 @@ export function BusinessCommandSvgSurface({
 
         if (!wasBrushMode) {
           // ── 单击模式：几何近邻命中 ──────────────────────────────────────────
-          const svgRoot = getSvgRoot();
-          if (svgRoot) {
+          const surface = rootRef.current;
+          if (surface) {
             const hit = hitTestSingleClick(
-              svgRoot,
+              surface,
               upPoint.x,
               upPoint.y,
+              document,
+              inverseViewportTransform,
               candidateNodes,
               visitedRef.current,
             );
@@ -478,11 +639,18 @@ export function BusinessCommandSvgSurface({
           }
         }
 
-        const svgRoot = getSvgRoot();
+        const surface = rootRef.current;
         clearGestureState();
-        if (svgRoot) {
+        if (surface) {
           setHoveredLineId(
-            resolveHoveredLineId(svgRoot, upPoint.x, upPoint.y, candidateNodes),
+            resolveHoveredLineId(
+              surface,
+              upPoint.x,
+              upPoint.y,
+              candidateNodes,
+              document,
+              inverseViewportTransform,
+            ),
           );
         }
       }}
@@ -497,10 +665,12 @@ export function BusinessCommandSvgSurface({
     >
       <div
         className="businessCommandSurfaceSvg"
+        style={surfaceTransformStyle}
         dangerouslySetInnerHTML={{ __html: annotatedMarkup }}
       />
       <svg
         className="businessCommandSurfaceOverlay"
+        style={surfaceTransformStyle}
         viewBox={`0 0 ${document.canvas.width} ${document.canvas.height}`}
       >
         {brushPath.length > 1 ? (
@@ -516,6 +686,79 @@ export function BusinessCommandSvgSurface({
             x={label.x}
             y={label.y}
             fill="#111111"
+            data-dragging={
+              draggingLabelNodeId === label.nodeId ? "true" : undefined
+            }
+            style={{ fontSize: `${label.fontSize}px` }}
+            onPointerDown={(event) => {
+              if (!onMoveLabel) return;
+              event.preventDefault();
+              event.stopPropagation();
+              clearGestureState();
+              clearLabelDragState();
+              const clientPoint = { x: event.clientX, y: event.clientY };
+              labelPressRef.current = {
+                pointerId: event.pointerId,
+                nodeId: label.nodeId,
+                clientPoint,
+              };
+              event.currentTarget.setPointerCapture(event.pointerId);
+              labelHoldTimerRef.current = window.setTimeout(() => {
+                labelDragRef.current = {
+                  pointerId: event.pointerId,
+                  nodeId: label.nodeId,
+                };
+                setDraggingLabelNodeId(label.nodeId);
+                updateDraggedLabel(label.nodeId, clientPoint);
+              }, LABEL_DRAG_HOLD_MS);
+            }}
+            onPointerMove={(event) => {
+              if (!onMoveLabel) return;
+              event.preventDefault();
+              event.stopPropagation();
+              const clientPoint = { x: event.clientX, y: event.clientY };
+              const dragging = labelDragRef.current;
+              if (
+                dragging &&
+                dragging.pointerId === event.pointerId &&
+                dragging.nodeId === label.nodeId
+              ) {
+                updateDraggedLabel(label.nodeId, clientPoint);
+                return;
+              }
+
+              const pressedLabel = labelPressRef.current;
+              if (
+                !pressedLabel ||
+                pressedLabel.pointerId !== event.pointerId ||
+                pressedLabel.nodeId !== label.nodeId
+              ) {
+                return;
+              }
+
+              const travelDistance = Math.hypot(
+                clientPoint.x - pressedLabel.clientPoint.x,
+                clientPoint.y - pressedLabel.clientPoint.y,
+              );
+              if (travelDistance > LABEL_DRAG_CANCEL_DISTANCE) {
+                clearLabelDragState();
+              }
+            }}
+            onPointerUp={(event) => {
+              if (!onMoveLabel) return;
+              event.preventDefault();
+              event.stopPropagation();
+              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }
+              clearLabelDragState();
+            }}
+            onPointerCancel={(event) => {
+              if (!onMoveLabel) return;
+              event.preventDefault();
+              event.stopPropagation();
+              clearLabelDragState();
+            }}
           >
             {label.text}
           </text>

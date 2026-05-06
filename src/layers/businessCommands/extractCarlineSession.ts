@@ -1,6 +1,7 @@
 import type { DocumentState } from "../data/types";
 import {
   EXTRACT_CARLINE_AREA_PRESETS,
+  type AreaPresetOption,
   type ExtractCarlineAreaDraft,
   type ExtractCarlineAreaOptionDraft,
   type ExtractCarlineCompletedArea,
@@ -8,6 +9,10 @@ import {
   type ExtractCarlineSession,
   type HitLineResult,
 } from "./businessCommandTypes";
+import {
+  resolveBusinessCommandLabelFontSize,
+  resolveCarlineAnnotationFontSize,
+} from "./businessCommandLabelStyle";
 
 function cloneSelectedLines(lines: ExtractCarlineSelectedLine[]) {
   return lines.map((line) => ({
@@ -16,22 +21,70 @@ function cloneSelectedLines(lines: ExtractCarlineSelectedLine[]) {
   }));
 }
 
-function cloneAreaDraft(draft: ExtractCarlineAreaDraft): ExtractCarlineAreaDraft {
+function cloneAreaDraft(
+  draft: ExtractCarlineAreaDraft,
+): ExtractCarlineAreaDraft {
   return {
     areaName: draft.areaName,
     presetId: draft.presetId,
     carlineLength: draft.carlineLength,
+    labelFontSize: draft.labelFontSize,
     selectedLines: cloneSelectedLines(draft.selectedLines),
   };
 }
 
-export function createExtractCarlineSession(): ExtractCarlineSession {
+function getCustomExtractCarlinePreset(): AreaPresetOption {
+  return (
+    EXTRACT_CARLINE_AREA_PRESETS[EXTRACT_CARLINE_AREA_PRESETS.length - 1] ?? {
+      id: "自定义",
+      areaName: "",
+      carlineLength: 10,
+      editableAreaName: true,
+    }
+  );
+}
+
+function resolveNextExtractCarlinePreset(
+  usedAreaNames: ReadonlySet<string>,
+  currentPresetId?: ExtractCarlineAreaOptionDraft["presetId"],
+): AreaPresetOption {
+  const systemPresets = EXTRACT_CARLINE_AREA_PRESETS.filter(
+    (preset) => preset.id !== "自定义",
+  );
+  const currentPresetIndex =
+    currentPresetId && currentPresetId !== "自定义"
+      ? systemPresets.findIndex((preset) => preset.id === currentPresetId)
+      : -1;
+
+  if (currentPresetIndex >= 0) {
+    const nextPresetAfterCurrent = systemPresets
+      .slice(currentPresetIndex + 1)
+      .find((preset) => !usedAreaNames.has(preset.areaName));
+    if (nextPresetAfterCurrent) {
+      return nextPresetAfterCurrent;
+    }
+  }
+
+  return (
+    systemPresets.find((preset) => !usedAreaNames.has(preset.areaName)) ??
+    getCustomExtractCarlinePreset()
+  );
+}
+
+export function createExtractCarlineSession(
+  document: DocumentState,
+): ExtractCarlineSession {
+  const defaultLabelFontSize = resolveBusinessCommandLabelFontSize(
+    document,
+    "车线编号",
+  );
   return {
     type: "提取车线",
     currentDraft: createExtractCarlineAreaDraft({
       presetId: EXTRACT_CARLINE_AREA_PRESETS[0]?.id ?? "自定义",
       areaName: EXTRACT_CARLINE_AREA_PRESETS[0]?.areaName ?? "",
       carlineLength: EXTRACT_CARLINE_AREA_PRESETS[0]?.carlineLength ?? 10,
+      labelFontSize: defaultLabelFontSize,
     }),
     completedAreas: [],
   };
@@ -45,10 +98,18 @@ export function createExtractCarlineSession(): ExtractCarlineSession {
 export function createExtractCarlineSessionFromDocument(
   document: DocumentState,
 ): ExtractCarlineSession {
+  const defaultLabelFontSize = resolveBusinessCommandLabelFontSize(
+    document,
+    "车线编号",
+  );
   // 按区域名称聚合已有车线节点
   const areaMap = new Map<
     string,
-    { nodeId: string; carlineLength: number; hitPoint: { x: number; y: number } }[]
+    {
+      nodeId: string;
+      carlineLength: number;
+      hitPoint: { x: number; y: number };
+    }[]
   >();
 
   for (const id of document.scene.order) {
@@ -63,19 +124,30 @@ export function createExtractCarlineSessionFromDocument(
       nodeId: id,
       carlineLength: business.尺数,
       hitPoint: {
-        x: typeof node.fabricObject.left === "number" ? node.fabricObject.left : 0,
-        y: typeof node.fabricObject.top === "number" ? node.fabricObject.top : 0,
+        x:
+          typeof node.fabricObject.left === "number"
+            ? node.fabricObject.left
+            : 0,
+        y:
+          typeof node.fabricObject.top === "number" ? node.fabricObject.top : 0,
       },
     });
   }
 
   if (areaMap.size === 0) {
-    return createExtractCarlineSession();
+    return createExtractCarlineSession(document);
   }
 
   const completedAreas: ExtractCarlineCompletedArea[] = [];
   for (const [areaName, lines] of areaMap) {
     const carlineLength = lines[0]?.carlineLength ?? 10;
+    const labelFontSize =
+      lines
+        .map((line) =>
+          resolveCarlineAnnotationFontSize(document, "车线编号", line.nodeId),
+        )
+        .find((value): value is number => value !== null) ??
+      defaultLabelFontSize;
     const preset = EXTRACT_CARLINE_AREA_PRESETS.find(
       (p) => p.areaName === areaName,
     );
@@ -83,6 +155,7 @@ export function createExtractCarlineSessionFromDocument(
       areaName,
       presetId: preset?.id ?? "自定义",
       carlineLength,
+      labelFontSize,
       selectedLines: lines.map((l) => ({
         nodeId: l.nodeId,
         hitPoint: l.hitPoint,
@@ -93,10 +166,7 @@ export function createExtractCarlineSessionFromDocument(
 
   // 自动选择第一个尚未使用的预设作为 currentDraft
   const usedAreaNames = new Set(completedAreas.map((a) => a.areaName));
-  const nextPreset =
-    EXTRACT_CARLINE_AREA_PRESETS.find(
-      (p) => p.id !== "自定义" && !usedAreaNames.has(p.areaName),
-    ) ?? EXTRACT_CARLINE_AREA_PRESETS[EXTRACT_CARLINE_AREA_PRESETS.length - 1]!;
+  const nextPreset = resolveNextExtractCarlinePreset(usedAreaNames);
 
   return {
     type: "提取车线",
@@ -104,6 +174,7 @@ export function createExtractCarlineSessionFromDocument(
       presetId: nextPreset.id,
       areaName: nextPreset.id === "自定义" ? "" : nextPreset.areaName,
       carlineLength: nextPreset.carlineLength,
+      labelFontSize: defaultLabelFontSize,
     }),
     completedAreas,
   };
@@ -156,12 +227,16 @@ export function createExtractCarlineAreaDraft(
     areaName: option.areaName.trim(),
     presetId: option.presetId,
     carlineLength: option.carlineLength,
+    labelFontSize: option.labelFontSize,
     selectedLines: [],
   };
 }
 
 function cloneCompletedAreas(areas: ExtractCarlineCompletedArea[]) {
-  return areas.map((area) => cloneAreaDraft(area));
+  return areas.map((area) => ({
+    ...cloneAreaDraft(area),
+    isRestored: area.isRestored,
+  }));
 }
 
 export function updateExtractCarlineCurrentDraft(
@@ -205,9 +280,10 @@ export function commitExtractCarlineCurrentArea(
       areaName,
     },
   ];
-  const nextPreset =
-    EXTRACT_CARLINE_AREA_PRESETS.find((item) => item.id !== "自定义") ??
-    EXTRACT_CARLINE_AREA_PRESETS[0];
+  const nextPreset = resolveNextExtractCarlinePreset(
+    new Set(nextCompletedAreas.map((area) => area.areaName)),
+    currentDraft.presetId,
+  );
 
   return {
     session: {
@@ -217,6 +293,7 @@ export function commitExtractCarlineCurrentArea(
         presetId: nextPreset?.id ?? "自定义",
         areaName: nextPreset?.areaName ?? "",
         carlineLength: nextPreset?.carlineLength ?? 10,
+        labelFontSize: currentDraft.labelFontSize,
       }),
     },
     validationError: null,
@@ -229,11 +306,15 @@ export function toggleCurrentExtractCarlineLines(
 ): ExtractCarlineSession {
   if (hits.length === 0) return session;
 
-  const nextSelectedLines = cloneSelectedLines(session.currentDraft.selectedLines);
+  const nextSelectedLines = cloneSelectedLines(
+    session.currentDraft.selectedLines,
+  );
   const sortedHits = [...hits].sort((a, b) => a.hitOrder - b.hitOrder);
-  
+
   const usedLineIds = new Set(
-    session.completedAreas.flatMap((area) => area.selectedLines.map((line) => line.nodeId)),
+    session.completedAreas.flatMap((area) =>
+      area.selectedLines.map((line) => line.nodeId),
+    ),
   );
 
   for (const hit of sortedHits) {
@@ -259,5 +340,60 @@ export function toggleCurrentExtractCarlineLines(
       ...cloneAreaDraft(session.currentDraft),
       selectedLines: nextSelectedLines,
     },
+  };
+}
+
+export function removeCurrentExtractCarlineLine(
+  session: ExtractCarlineSession,
+  nodeId: string,
+): ExtractCarlineSession {
+  const nextSelectedLines = cloneSelectedLines(
+    session.currentDraft.selectedLines.filter((line) => line.nodeId !== nodeId),
+  );
+
+  if (nextSelectedLines.length === session.currentDraft.selectedLines.length) {
+    return session;
+  }
+
+  return {
+    ...session,
+    currentDraft: {
+      ...cloneAreaDraft(session.currentDraft),
+      selectedLines: nextSelectedLines,
+    },
+  };
+}
+
+export function updateExtractCarlineLabelPosition(
+  session: ExtractCarlineSession,
+  nodeId: string,
+  hitPoint: { x: number; y: number },
+): ExtractCarlineSession {
+  let changed = false;
+  const completedAreas = cloneCompletedAreas(session.completedAreas).map(
+    (area) => ({
+      ...area,
+      selectedLines: area.selectedLines.map((line) => {
+        if (line.nodeId !== nodeId) return line;
+        changed = true;
+        return { ...line, hitPoint: { ...hitPoint } };
+      }),
+    }),
+  );
+  const currentDraft = {
+    ...cloneAreaDraft(session.currentDraft),
+    selectedLines: session.currentDraft.selectedLines.map((line) => {
+      if (line.nodeId !== nodeId) return { ...line };
+      changed = true;
+      return { ...line, hitPoint: { ...hitPoint } };
+    }),
+  };
+
+  if (!changed) return session;
+
+  return {
+    ...session,
+    completedAreas,
+    currentDraft,
   };
 }

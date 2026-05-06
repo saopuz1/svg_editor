@@ -5,6 +5,10 @@ import type {
   MarkGearSelectedLine,
   MarkGearSession,
 } from "./businessCommandTypes";
+import {
+  resolveBusinessCommandLabelFontSize,
+  resolveFirstAnnotationFontSize,
+} from "./businessCommandLabelStyle";
 
 // ─── 工厂 ─────────────────────────────────────────────────────────────────────
 
@@ -19,10 +23,14 @@ export function createMarkGearSession(
     const node = document.scene.nodes[id];
     return node?.business.type === "车线";
   });
+  const currentLabelFontSize =
+    resolveFirstAnnotationFontSize(document, "档位") ??
+    resolveBusinessCommandLabelFontSize(document, "档位");
 
   return {
     type: "标记档位",
     currentGearNumber: 1,
+    currentLabelFontSize,
     currentLines: [],
     completedGears: [],
     carlineNodeIds,
@@ -74,6 +82,15 @@ export function canAdvanceToNextGear(session: MarkGearSession): boolean {
 
 function cloneLines(lines: MarkGearSelectedLine[]): MarkGearSelectedLine[] {
   return lines.map((l) => ({ nodeId: l.nodeId, hitPoint: { ...l.hitPoint } }));
+}
+
+function cloneCompletedGears(
+  gears: MarkGearCompletedGear[],
+): MarkGearCompletedGear[] {
+  return gears.map((gear) => ({
+    ...gear,
+    selectedLines: cloneLines(gear.selectedLines),
+  }));
 }
 
 /**
@@ -128,6 +145,7 @@ export function commitMarkGearCurrentGear(session: MarkGearSession): {
 
   const completed: MarkGearCompletedGear = {
     gearNumber: session.currentGearNumber,
+    labelFontSize: session.currentLabelFontSize,
     selectedLines: cloneLines(session.currentLines),
   };
 
@@ -135,6 +153,7 @@ export function commitMarkGearCurrentGear(session: MarkGearSession): {
     session: {
       ...session,
       currentGearNumber: session.currentGearNumber + 1,
+      currentLabelFontSize: session.currentLabelFontSize,
       currentLines: [],
       completedGears: [...session.completedGears, completed],
     },
@@ -161,4 +180,35 @@ export function getMarkGearHittableNodeIds(
     result.add(line.nodeId);
   }
   return result;
+}
+
+export function updateMarkGearLabelPosition(
+  session: MarkGearSession,
+  nodeId: NodeId,
+  hitPoint: { x: number; y: number },
+): MarkGearSession {
+  let changed = false;
+  const completedGears = cloneCompletedGears(session.completedGears).map(
+    (gear) => ({
+      ...gear,
+      selectedLines: gear.selectedLines.map((line) => {
+        if (line.nodeId !== nodeId) return line;
+        changed = true;
+        return { ...line, hitPoint: { ...hitPoint } };
+      }),
+    }),
+  );
+  const currentLines = cloneLines(session.currentLines).map((line) => {
+    if (line.nodeId !== nodeId) return line;
+    changed = true;
+    return { ...line, hitPoint: { ...hitPoint } };
+  });
+
+  if (!changed) return session;
+
+  return {
+    ...session,
+    completedGears,
+    currentLines,
+  };
 }

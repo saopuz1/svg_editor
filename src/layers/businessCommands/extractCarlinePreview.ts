@@ -7,6 +7,7 @@ import type {
   ExtractCarlineSession,
 } from "./businessCommandTypes";
 import { createAnnotationNodeIdMap } from "../data/idRules";
+import { buildBusinessCommandLabelLayout } from "./businessCommandLabelStyle";
 
 const PREVIEW_LABEL_NODE_PREFIX = "__preview__/extract-carline/label/";
 
@@ -61,6 +62,7 @@ function buildPreviewLabelSpecs(
     text: String(globalOffset + index + 1),
     position: { ...selectedLine.hitPoint },
     areaName: areaDraft.areaName,
+    fontSize: areaDraft.labelFontSize,
   }));
 }
 
@@ -77,16 +79,14 @@ function createPreviewLabelNode(spec: PreviewLabelNodeSpec): EditorNode {
     business: { type: "标注", 字段: "车线编号", 归属车线Id: spec.lineNodeId },
     fabricObject: {
       type: "textbox",
-      left: spec.position.x - 20,
-      top: spec.position.y - 10,
       text: spec.text,
       fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
-      fontSize: 18,
       fill: "#111111",
-      width: 40,
-      textAlign: "center",
-      originX: "center",
-      originY: "center",
+      ...buildBusinessCommandLabelLayout(
+        spec.text,
+        spec.position,
+        spec.fontSize,
+      ),
       selectable: false,
       evented: false,
     },
@@ -161,7 +161,11 @@ export function buildExtractCarlinePreviewDocument(
   let globalOffset = restoredCount;
 
   for (const areaDraft of getPreviewAreas(session)) {
-    const areaPreview = buildAreaPreview(next.scene.nodes, areaDraft, globalOffset);
+    const areaPreview = buildAreaPreview(
+      next.scene.nodes,
+      areaDraft,
+      globalOffset,
+    );
     globalOffset += areaDraft.selectedLines.length;
     next.scene.nodes = areaPreview.nextNodes;
 

@@ -1,8 +1,23 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-export interface BusinessCommandStep {
+export interface BusinessCommandConfirmDialog {
   title: string;
-  description: string;
+  text: string;
+  cancelLabel?: string;
+  confirmLabel: string;
+  confirmButtonClassName?: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+
+interface BusinessCommandDialogProps {
+  open: boolean;
+  title: string;
+  summary?: string;
+  confirmDialog?: BusinessCommandConfirmDialog | null;
+  onRequestClose: () => void;
+  bodyContent: ReactNode;
+  footerContent: ReactNode;
 }
 
 type DialogFrame = {
@@ -49,33 +64,11 @@ export function BusinessCommandDialog({
   open,
   title,
   summary,
-  steps,
-  currentStep,
-  showExitConfirm,
-  onPrev,
-  onNext,
-  onFinish,
+  confirmDialog,
   onRequestClose,
-  onCancelExit,
-  onConfirmExit,
   bodyContent,
   footerContent,
-}: {
-  open: boolean;
-  title: string;
-  summary?: string;
-  steps: readonly BusinessCommandStep[];
-  currentStep: number;
-  showExitConfirm: boolean;
-  onPrev: () => void;
-  onNext: () => void;
-  onFinish: () => void;
-  onRequestClose: () => void;
-  onCancelExit: () => void;
-  onConfirmExit: () => void;
-  bodyContent?: ReactNode;
-  footerContent?: ReactNode;
-}) {
+}: BusinessCommandDialogProps) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const [frame, setFrame] = useState<DialogFrame>(() =>
     clampFrame({
@@ -86,19 +79,25 @@ export function BusinessCommandDialog({
     }),
   );
 
+  const activeConfirmDialog = confirmDialog ?? null;
+
   useEffect(() => {
     if (!open) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
+        if (activeConfirmDialog) {
+          activeConfirmDialog.onCancel();
+          return;
+        }
         onRequestClose();
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, onRequestClose]);
+  }, [activeConfirmDialog, open, onRequestClose]);
 
   useEffect(() => {
     const onResize = () => {
@@ -111,9 +110,6 @@ export function BusinessCommandDialog({
 
   if (!open) return null;
 
-  const step = steps[currentStep];
-  const isFirstStep = currentStep === 0;
-  const isLastStep = currentStep === steps.length - 1;
   const startDrag = (event: React.MouseEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest("button")) return;
 
@@ -280,104 +276,36 @@ export function BusinessCommandDialog({
             ×
           </button>
         </div>
+        <div className="businessDialogBody">{bodyContent}</div>
 
-        {steps.length > 1 && (
-          <div className="businessDialogSteps" aria-label="流程步骤">
-            {steps.map((item, index) => {
-              const state =
-                index < currentStep
-                  ? "done"
-                  : index === currentStep
-                    ? "active"
-                    : "idle";
-              return (
-                <div
-                  key={`${title}-${item.title}`}
-                  className={`businessDialogStep businessDialogStep${state[0].toUpperCase()}${state.slice(1)}`}
-                >
-                  <div className="businessDialogStepIndex">{index + 1}</div>
-                  <div className="businessDialogStepText">{item.title}</div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+        {footerContent}
 
-        <div className="businessDialogBody">
-          {bodyContent ?? (
-            <>
-              <div className="businessDialogBodyLabel">
-                第 {currentStep + 1} 步 / 共 {steps.length} 步
-              </div>
-              <div className="businessDialogBodyTitle">{step.title}</div>
-              <div className="businessDialogBodyDescription">
-                {step.description}
-              </div>
-              <div className="businessDialogHint">
-                保持当前窗口打开，按本步骤说明继续在 SVG
-                画布中选择、标记或调整对象。
-              </div>
-            </>
-          )}
-        </div>
-
-        {footerContent ?? (
-          <div className="businessDialogFooter">
-            <div className="businessDialogFooterLeft">
-              <button
-                type="button"
-                className="btn"
-                onClick={onPrev}
-                disabled={isFirstStep}
-              >
-                上一步
-              </button>
-            </div>
-
-            <div className="businessDialogFooterRight">
-              <button type="button" className="btn" onClick={onRequestClose}>
-                退出
-              </button>
-              {isLastStep ? (
-                <button
-                  type="button"
-                  className="btn btnPrimary"
-                  onClick={onFinish}
-                >
-                  完成
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="btn btnPrimary"
-                  onClick={onNext}
-                >
-                  下一步
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {showExitConfirm ? (
+        {activeConfirmDialog ? (
           <div className="businessDialogConfirmOverlay">
             <div className="businessDialogConfirm">
               <div className="businessDialogConfirmTitle">
-                是否结束，将清理当前操作
+                {activeConfirmDialog.title}
               </div>
               <div className="businessDialogConfirmText">
-                当前业务命令流程尚未完成，结束后会清空当前步骤状态。
+                {activeConfirmDialog.text}
               </div>
               <div className="businessDialogConfirmActions">
-                <button type="button" className="btn" onClick={onCancelExit}>
-                  继续操作
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={activeConfirmDialog.onCancel}
+                >
+                  {activeConfirmDialog.cancelLabel ?? "取消"}
                 </button>
                 <button
                   type="button"
-                  className="btn btnDanger"
-                  onClick={onConfirmExit}
+                  className={
+                    activeConfirmDialog.confirmButtonClassName ??
+                    "btn btnDanger"
+                  }
+                  onClick={activeConfirmDialog.onConfirm}
                 >
-                  结束并清理
+                  {activeConfirmDialog.confirmLabel}
                 </button>
               </div>
             </div>
