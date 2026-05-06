@@ -24,15 +24,14 @@ export interface FabricCoreBridgeOptions {
    * rebuild selections (e.g. recreate ActiveSelection).
    */
   isSelectionSyncSuppressed?: () => boolean;
+  shouldHandleCoreDocumentEdits?: () => boolean;
 }
 
 export interface FabricToolBridgeOptions {
   canvas: Canvas;
   editor: Editor;
   activeToolId: ToolId;
-  onSelectLassoGesture?: (
-    points: Array<{ x: number; y: number }>,
-  ) => boolean;
+  onSelectLassoGesture?: (points: Array<{ x: number; y: number }>) => boolean;
 }
 
 export function bindFabricCoreEvents({
@@ -41,14 +40,17 @@ export function bindFabricCoreEvents({
   getLastSelectionKey,
   setLastSelectionKey,
   isSelectionSyncSuppressed,
+  shouldHandleCoreDocumentEdits,
 }: FabricCoreBridgeOptions) {
   let internalSuppressSelectionSync = false;
   let pendingMultiTransformPersist = false;
   const isSuppressed = () =>
     internalSuppressSelectionSync || isSelectionSyncSuppressed?.() === true;
+  const canHandleCoreDocumentEdits = () =>
+    shouldHandleCoreDocumentEdits?.() !== false;
 
   const syncSelection = () => {
-    if (isSuppressed()) return;
+    if (isSuppressed() || !canHandleCoreDocumentEdits()) return;
     const active = canvas.getActiveObjects();
     const ids = active
       .map((obj) => getNodeIdFromObject(obj))
@@ -63,7 +65,7 @@ export function bindFabricCoreEvents({
 
   const handleObjectModified = (evt: { target?: FabricObject }) => {
     const obj = evt.target;
-    if (!obj) return;
+    if (!obj || !canHandleCoreDocumentEdits()) return;
     if (obj instanceof ActiveSelection) {
       if (pendingMultiTransformPersist) return;
       pendingMultiTransformPersist = true;
@@ -120,7 +122,7 @@ export function bindFabricCoreEvents({
 
   const handleTextEditingExited = (evt: { target?: FabricObject }) => {
     const obj = evt.target;
-    if (!obj) return;
+    if (!obj || !canHandleCoreDocumentEdits()) return;
     const nodeId =
       getNodeIdFromObject(obj) ??
       getNodeIdFromObject(

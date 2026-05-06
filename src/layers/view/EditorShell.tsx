@@ -7,7 +7,6 @@ import {
   useEditor,
 } from "../../app/EditorContext";
 import { BusinessCommandHost } from "../businessCommands/host/BusinessCommandHost";
-import type { BusinessCommandId } from "../businessCommands/host/businessCommandHostShared";
 import type {
   AnnotationField,
   AutoModifierConfig,
@@ -30,6 +29,10 @@ import {
   shouldRegenerateNodeIdOnBusinessChange,
 } from "../data/idRules";
 import { serializeDocument } from "../data/serialization";
+import {
+  buildBusinessCommandPreviewDocument,
+  type BusinessCommandId,
+} from "../edit/businessCommandsState";
 import { createCommand } from "../edit/commands";
 import {
   CANCEL_ACTIVE_DRAWING_EVENT,
@@ -41,7 +44,6 @@ import { readNodeNumberProp } from "../../rendering/fabric/fabricProjection";
 import {
   FabricStage,
   type FabricStageApi,
-  type FabricViewportTransform,
 } from "./FabricStage";
 import { getInspectorSections, type InspectorFieldId } from "./inspectorSchema";
 import { DEFAULT_VIEW_STATE, type ViewState } from "./viewState";
@@ -252,14 +254,8 @@ export function EditorShell() {
   const stageRef = useRef<FabricStageApi | null>(null);
 
   const [importError, setImportError] = useState<string>("");
+  const [importedFilename, setImportedFilename] = useState<string>("");
   const [viewState, setViewState] = useState<ViewState>(DEFAULT_VIEW_STATE);
-  const [activeBusinessCommandId, setActiveBusinessCommandId] =
-    useState<BusinessCommandId | null>(null);
-  const [businessCommandSvgMarkup, setBusinessCommandSvgMarkup] = useState("");
-  const [
-    businessCommandViewportTransform,
-    setBusinessCommandViewportTransform,
-  ] = useState<FabricViewportTransform>([1, 0, 0, 1, 0, 0]);
 
   const [rightTab, setRightTab] = useState<"inspector" | "rules">("inspector");
   const [newModifierType, setNewModifierType] = useState<
@@ -275,9 +271,10 @@ export function EditorShell() {
   const activeToolId = editState.activeToolId;
   const tools = editState.tools;
   const selection = editState.selection;
+  const activeBusinessCommand = editState.businessCommand;
   const history = editor.edit.getHistory();
   const isExtractCarlineHostOpen =
-    activeBusinessCommandId === "extract-carline";
+    activeBusinessCommand?.kind === "extract-carline";
 
   const selectedNode = useMemo(() => {
     const id = selection[0];
@@ -410,29 +407,15 @@ export function EditorShell() {
     });
   }, [document.scene.nodes, document.scene.order]);
 
-  const isMarkGearHostOpen = activeBusinessCommandId === "mark-gear";
-  const isMarkOddEvenHostOpen = activeBusinessCommandId === "mark-odd-even";
-
-  useEffect(() => {
-    if (
-      !isExtractCarlineHostOpen &&
-      !isMarkGearHostOpen &&
-      !isMarkOddEvenHostOpen
-    ) {
-      setBusinessCommandSvgMarkup("");
-      return;
-    }
-    setBusinessCommandSvgMarkup(stageRef.current?.exportSvg() ?? "");
-  }, [
-    document,
-    isExtractCarlineHostOpen,
-    isMarkGearHostOpen,
-    isMarkOddEvenHostOpen,
-    viewState,
-  ]);
+  const isMarkGearHostOpen = activeBusinessCommand?.kind === "mark-gear";
+  const isMarkOddEvenHostOpen = activeBusinessCommand?.kind === "mark-odd-even";
+  const renderDocument = useMemo(
+    () => buildBusinessCommandPreviewDocument(document, activeBusinessCommand),
+    [activeBusinessCommand, document],
+  );
 
   const openBusinessCommandDialog = (commandId: BusinessCommandId) => {
-    setActiveBusinessCommandId(commandId);
+    editor.edit.openBusinessCommand(commandId);
   };
 
   useEffect(() => {
@@ -809,13 +792,15 @@ export function EditorShell() {
         selectedNode.fabricObject.type,
       );
       const isAnnotationNode = selectedNode.business.type === "标注";
+      const isLineNode = isLineLikeNode(selectedNode);
       return (
         <div className="row" key={fieldId}>
           <div className="label">业务类型</div>
           <select
             className="input"
             value={selectedNode.business.type}
-            disabled={isAnnotationNode}
+            // Line-type business classification is derived from business flows; do not allow manual toggling.
+            disabled={isAnnotationNode || isLineNode}
             onChange={(e) => {
               const nextType = e.currentTarget.value as NodeBusiness["type"];
               const provisionalBusiness = createBusinessForFabricTypeAndType(
@@ -936,28 +921,10 @@ export function EditorShell() {
       isLineLikeNode(selectedNode) &&
       selectedNode.business.type === "车线"
     ) {
-      return renderToggleField(
+      return renderReadOnlyField(
         fieldId,
         "单双",
-        selectedNode.business.是双数 ? "double" : "single",
-        [
-          {
-            value: "single",
-            label: "单",
-            onClick: () =>
-              updateCarlineFields(selectedNode.id, {
-                是双数: false,
-              }),
-          },
-          {
-            value: "double",
-            label: "双",
-            onClick: () =>
-              updateCarlineFields(selectedNode.id, {
-                是双数: true,
-              }),
-          },
-        ],
+        selectedNode.business.是双数 ? "双" : "单",
       );
     }
 
@@ -1088,7 +1055,9 @@ export function EditorShell() {
                 try {
                   const svg = await file.text();
                   await stageRef.current?.importSvg(svg);
+                  setImportedFilename(file.name);
                 } catch (err) {
+                  setImportedFilename("");
                   setImportError(
                     err instanceof Error ? err.message : String(err),
                   );
@@ -1274,6 +1243,7 @@ export function EditorShell() {
           <span>就绪</span>
           <span>当前工具：{activeToolId}</span>
           <span>选中：{selection.length}</span>
+          <span>当前文件：{importedFilename || "-"}</span>
 
           <div className="toolOptionsRight">
             <span>
@@ -1387,15 +1357,11 @@ export function EditorShell() {
                 ref={stageRef}
                 editor={editor}
                 document={document}
+                displayDocument={renderDocument}
                 selection={selection}
                 activeToolId={activeToolId}
                 viewState={viewState}
-                onViewportTransformChange={setBusinessCommandViewportTransform}
-                businessCommandActive={
-                  isExtractCarlineHostOpen ||
-                  isMarkGearHostOpen ||
-                  isMarkOddEvenHostOpen
-                }
+                businessCommand={activeBusinessCommand}
               />
               <BusinessCommandHost
                 open={
@@ -1413,16 +1379,13 @@ export function EditorShell() {
                         : null
                 }
                 document={document}
-                svgMarkup={businessCommandSvgMarkup}
-                viewportTransform={businessCommandViewportTransform}
-                onDocumentChange={(nextDocument) => {
-                  editor.data.setState(nextDocument);
+                activeCommand={activeBusinessCommand}
+                onSessionChange={(nextCommand) => {
+                  editor.edit.replaceBusinessCommand(nextCommand);
                 }}
-                onClose={() => setActiveBusinessCommandId(null)}
-                onCommit={(nextDocument) => {
-                  editor.data.setState(nextDocument);
-                  setActiveBusinessCommandId(null);
-                }}
+                onClose={() => editor.edit.closeBusinessCommand()}
+                onRestart={() => editor.edit.restartBusinessCommand()}
+                onCommit={() => editor.edit.commitBusinessCommand()}
               />
             </div>
           </div>

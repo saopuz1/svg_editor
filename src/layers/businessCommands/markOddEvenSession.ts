@@ -191,36 +191,29 @@ export function updateMarkOddEvenLabelPosition(
 
 // ─── 应用到文档 ──────────────────────────────────────────────────────────────
 
-/**
- * 将勾选结果写入 DocumentState：
- * - 已勾选的车线节点 → 是双数: true
- * - 未勾选的车线节点 → 是双数: false
- */
-export function applyMarkOddEvenSession(
+export function buildMarkOddEvenPreviewDocument(
   base: DocumentState,
   session: MarkOddEvenSession,
-): DocumentState {
+): { document: DocumentState; previewLabelNodeIds: NodeId[] } {
   const doubleIds = getMarkOddEvenDoubleNodeIds(session);
-  const doubleLineMap = new Map(session.doubleLines.map((l) => [l.nodeId, l]));
+  const doubleLineMap = new Map(session.doubleLines.map((line) => [line.nodeId, line]));
 
-  // 移除旧的"单双"标注节点（避免重复提交时堆积）
   const filteredNodes = Object.fromEntries(
     Object.entries(base.scene.nodes).filter(([, node]) => {
       if (node.business.type !== "标注") return true;
       return node.business.字段 !== "单双";
     }),
   );
-  const filteredOrder = base.scene.order.filter(
-    (id) =>
-      !base.scene.nodes[id] ||
-      base.scene.nodes[id]!.business.type !== "标注" ||
-      (base.scene.nodes[id]!.business as { 字段?: string }).字段 !== "单双",
-  );
+  const filteredOrder = base.scene.order.filter((id) => {
+    const node = base.scene.nodes[id];
+    if (!node || node.business.type !== "标注") return true;
+    return node.business.字段 !== "单双";
+  });
 
   const nextNodes = { ...filteredNodes };
   const nextOrder = [...filteredOrder];
+  const previewLabelNodeIds: NodeId[] = [];
 
-  // 更新车线节点的 是双数 字段
   for (const id of session.carlineNodeIds) {
     const node = nextNodes[id];
     if (!node || node.business.type !== "车线") continue;
@@ -233,7 +226,6 @@ export function applyMarkOddEvenSession(
     };
   }
 
-  // 为勾选为"双"的车线创建标注节点
   for (const line of doubleLineMap.values()) {
     const annotationNode = createDoubleAnnotationNode(
       line.nodeId,
@@ -242,7 +234,36 @@ export function applyMarkOddEvenSession(
     );
     nextNodes[annotationNode.id] = annotationNode;
     nextOrder.push(annotationNode.id);
+    previewLabelNodeIds.push(annotationNode.id);
   }
+
+  return {
+    document: {
+      ...base,
+      scene: {
+        ...base.scene,
+        nodes: nextNodes,
+        order: nextOrder,
+      },
+    },
+    previewLabelNodeIds,
+  };
+}
+
+/**
+ * 将勾选结果写入 DocumentState：
+ * - 已勾选的车线节点 → 是双数: true
+ * - 未勾选的车线节点 → 是双数: false
+ */
+export function applyMarkOddEvenSession(
+  base: DocumentState,
+  session: MarkOddEvenSession,
+): DocumentState {
+  const { document: previewDocument } = buildMarkOddEvenPreviewDocument(
+    base,
+    session,
+  );
+  const doubleIds = getMarkOddEvenDoubleNodeIds(session);
 
   // 同步更新 domain.车线
   const nextCarlines = base.domain.车线.map((carline) => {
@@ -251,8 +272,7 @@ export function applyMarkOddEvenSession(
   });
 
   return {
-    ...base,
-    scene: { ...base.scene, nodes: nextNodes, order: nextOrder },
+    ...previewDocument,
     domain: { ...base.domain, 车线: nextCarlines },
   };
 }

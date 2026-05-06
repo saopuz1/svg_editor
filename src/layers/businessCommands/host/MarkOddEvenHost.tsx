@@ -1,25 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { BusinessCommandDialog } from "../../../components/BusinessCommandDialog";
-import type { MarkOddEvenSession } from "../businessCommandTypes";
 import {
   MAX_BUSINESS_COMMAND_LABEL_FONT_SIZE,
   MIN_BUSINESS_COMMAND_LABEL_FONT_SIZE,
   clampBusinessCommandLabelFontSize,
 } from "../businessCommandLabelStyle";
-import { resetDocumentForMarkOddEven } from "../businessCommandReset";
-import {
-  applyMarkOddEvenSession,
-  createMarkOddEvenSession,
-  getMarkOddEvenDoubleNodeIds,
-  toggleMarkOddEvenLines,
-  updateMarkOddEvenLabelPosition,
-} from "../markOddEvenSession";
-import {
-  BusinessCommandSvgSurface,
-  type LineHighlightInfo,
-  type SurfaceLabelItem,
-  type SvgPoint,
-} from "../surfaces/BusinessCommandSvgSurface";
 import {
   createBusinessCommandConfirmDialog,
   type BusinessCommandCanvasHostProps,
@@ -27,31 +12,19 @@ import {
 } from "./businessCommandHostShared";
 
 const DOUBLE_COLOR = "#2563eb";
-const SINGLE_COLOR = "#6b7280";
 
 export function MarkOddEvenHost({
   open,
-  document,
-  svgMarkup,
-  viewportTransform,
-  onDocumentChange,
+  activeCommand,
+  onSessionChange,
   onClose,
+  onRestart,
   onCommit,
 }: BusinessCommandCanvasHostProps) {
-  const [session, setSession] = useState<MarkOddEvenSession | null>(null);
+  const session =
+    activeCommand?.kind === "mark-odd-even" ? activeCommand.session : null;
   const [confirmState, setConfirmState] =
     useState<BusinessCommandConfirmState>(null);
-
-  useEffect(() => {
-    if (!open) {
-      setSession(null);
-      setConfirmState(null);
-      return;
-    }
-    setSession(createMarkOddEvenSession(document));
-    setConfirmState(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
 
   const confirmDialog = useMemo(
     () =>
@@ -65,54 +38,12 @@ export function MarkOddEvenHost({
           onClose();
         },
         onRestart: () => {
-          const nextDocument = resetDocumentForMarkOddEven(document);
-          onDocumentChange(nextDocument);
-          setSession(createMarkOddEvenSession(nextDocument));
           setConfirmState(null);
+          onRestart();
         },
       }),
-    [confirmState, document, onClose, onDocumentChange],
+    [confirmState, onClose, onRestart],
   );
-
-  // ── 候选节点（仅车线） ───────────────────────────────────────────────────────
-
-  const candidateNodeIds = useMemo<ReadonlySet<string>>(() => {
-    if (!session) return new Set();
-    return new Set(session.carlineNodeIds);
-  }, [session]);
-
-  // ── 高亮图 ──────────────────────────────────────────────────────────────────
-
-  const lineHighlightMap = useMemo<
-    ReadonlyMap<string, LineHighlightInfo>
-  >(() => {
-    if (!session) return new Map();
-    const doubleIds = getMarkOddEvenDoubleNodeIds(session);
-    const map = new Map<string, LineHighlightInfo>();
-    for (const id of session.carlineNodeIds) {
-      const isDouble = doubleIds.has(id);
-      map.set(id, {
-        color: isDouble ? DOUBLE_COLOR : SINGLE_COLOR,
-        isUsed: false,
-      });
-    }
-    return map;
-  }, [session]);
-
-  // ── 预览标签（已勾选为双的线条显示"双"） ────────────────────────────────────
-
-  const previewLabels = useMemo<SurfaceLabelItem[]>(() => {
-    if (!session) return [];
-    return session.doubleLines.map((line) => ({
-      key: `odd-even-${line.nodeId}`,
-      nodeId: line.nodeId,
-      text: "双",
-      x: line.hitPoint.x,
-      y: line.hitPoint.y,
-      color: DOUBLE_COLOR,
-      fontSize: session.labelFontSize,
-    }));
-  }, [session]);
 
   // ── 统计 ────────────────────────────────────────────────────────────────────
 
@@ -160,16 +91,15 @@ export function MarkOddEvenHost({
               max={MAX_BUSINESS_COMMAND_LABEL_FONT_SIZE}
               value={session.labelFontSize}
               onChange={(event) => {
-                setSession((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        labelFontSize: clampBusinessCommandLabelFontSize(
-                          Number(event.currentTarget.value),
-                        ),
-                      }
-                    : prev,
-                );
+                onSessionChange({
+                  kind: "mark-odd-even",
+                  session: {
+                    ...session,
+                    labelFontSize: clampBusinessCommandLabelFontSize(
+                      Number(event.currentTarget.value),
+                    ),
+                  },
+                });
               }}
             />
           </div>
@@ -220,52 +150,26 @@ export function MarkOddEvenHost({
           <button
             type="button"
             className="btn btnPrimary"
-            onClick={() => onCommit(applyMarkOddEvenSession(document, session))}
+            onClick={onCommit}
           >
             完成
           </button>
         </div>
       </div>
     );
-  }, [document, onCommit, session]);
+  }, [onCommit, session]);
 
   if (!open || !session) return null;
 
   return (
-    <>
-      <BusinessCommandSvgSurface
-        document={document}
-        svgMarkup={svgMarkup}
-        viewportTransform={viewportTransform}
-        candidateNodeIds={candidateNodeIds}
-        lineHighlightMap={lineHighlightMap}
-        previewLabels={previewLabels}
-        onMoveLabel={(nodeId, markerPos) => {
-          setSession((prev) =>
-            prev
-              ? updateMarkOddEvenLabelPosition(prev, nodeId, markerPos)
-              : prev,
-          );
-        }}
-        onToggleLine={(nodeId: string, markerPos: SvgPoint) => {
-          setSession((prev) =>
-            prev
-              ? toggleMarkOddEvenLines(prev, [
-                  { nodeId, hitPoint: markerPos, hitOrder: 0 },
-                ])
-              : prev,
-          );
-        }}
-      />
-      <BusinessCommandDialog
-        open={open}
-        title="标记单双"
-        summary="勾选车线标记为双，未勾选默认为单。"
-        confirmDialog={confirmDialog}
-        onRequestClose={() => setConfirmState("exit")}
-        bodyContent={bodyContent}
-        footerContent={footerContent}
-      />
-    </>
+    <BusinessCommandDialog
+      open={open}
+      title="标记单双"
+      summary="在 Fabric 画布上勾选车线标记为双，未勾选默认为单。"
+      confirmDialog={confirmDialog}
+      onRequestClose={() => setConfirmState("exit")}
+      bodyContent={bodyContent}
+      footerContent={footerContent}
+    />
   );
 }

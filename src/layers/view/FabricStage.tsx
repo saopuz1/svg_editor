@@ -19,6 +19,9 @@ import {
   bindFabricCoreEvents,
   bindFabricToolEvents,
 } from "../../rendering/fabric/fabricEventBridge";
+import {
+  bindFabricBusinessCommandEvents,
+} from "../../rendering/fabric/fabricBusinessCommandController";
 import { buildDocumentFromSvgImport } from "../../rendering/fabric/fabricImportExport";
 import {
   applyNodeToObject,
@@ -29,6 +32,7 @@ import {
   setObjectNodeId,
 } from "../../rendering/fabric/fabricProjection";
 import type { DocumentState, NodeId } from "../data/types";
+import type { ActiveBusinessCommandState } from "../edit/businessCommandsState";
 import { serializeDocument } from "../data/serialization";
 import { createCommand } from "../edit/commands";
 import type { ToolId } from "../edit/tools";
@@ -101,6 +105,10 @@ const ZOOM_SENSITIVITY = 0.999;
 
 function isPanGesture(evt: MouseEvent) {
   return evt.button === 1;
+}
+
+function isBusinessSelectionTool(toolId: ToolId) {
+  return toolId === "select-box";
 }
 
 function isMacZoomGesture(evt: WheelEvent) {
@@ -194,21 +202,21 @@ export const FabricStage = forwardRef<
   {
     editor: Editor;
     document: DocumentState;
+    displayDocument?: DocumentState;
     selection: NodeId[];
     activeToolId: ToolId;
     viewState: ViewState;
-    businessCommandActive?: boolean;
-    onViewportTransformChange?: (transform: FabricViewportTransform) => void;
+    businessCommand?: ActiveBusinessCommandState | null;
   }
 >(function FabricStage(
   {
     editor,
     document,
+    displayDocument,
     selection,
     activeToolId,
     viewState,
-    businessCommandActive = false,
-    onViewportTransformChange,
+    businessCommand = null,
   },
   ref,
 ) {
@@ -241,11 +249,26 @@ export const FabricStage = forwardRef<
     moveCursor: null,
   });
   const [ready, setReady] = useState(false);
+  const renderDocument = displayDocument ?? document;
+  const renderDocumentRef = useRef(renderDocument);
+  const sourceDocumentRef = useRef(document);
+  const businessCommandRef = useRef<ActiveBusinessCommandState | null>(
+    businessCommand,
+  );
 
   const canvasSize = useMemo(
-    () => ({ width: document.canvas.width, height: document.canvas.height }),
-    [document.canvas.height, document.canvas.width],
+    () => ({
+      width: renderDocument.canvas.width,
+      height: renderDocument.canvas.height,
+    }),
+    [renderDocument.canvas.height, renderDocument.canvas.width],
   );
+
+  useEffect(() => {
+    renderDocumentRef.current = renderDocument;
+    sourceDocumentRef.current = document;
+    businessCommandRef.current = businessCommand;
+  }, [businessCommand, document, renderDocument]);
 
   useImperativeHandle(
     ref,
@@ -276,11 +299,11 @@ export const FabricStage = forwardRef<
     const canvas = new Canvas(canvasElRef.current, {
       backgroundColor: "#ffffff",
       preserveObjectStacking: true,
-      selection: !businessCommandActive,
+      selection: true,
       selectionColor: "rgba(37, 99, 235, 0.08)",
       selectionBorderColor: "rgba(37, 99, 235, 0.9)",
       selectionLineWidth: 1.5,
-      skipTargetFind: businessCommandActive,
+      skipTargetFind: false,
     });
 
     // setDimensions 只放大了 backstore（canvas.width/height 属性乘以 DPR），
@@ -295,9 +318,6 @@ export const FabricStage = forwardRef<
     canvas.setViewportTransform(
       cloneViewportTransform(viewportTransformRef.current),
     );
-    onViewportTransformChange?.(
-      cloneViewportTransform(viewportTransformRef.current),
-    );
     canvas.uniformScaling = false;
     fabricRef.current = canvas;
     setReady(true);
@@ -310,6 +330,7 @@ export const FabricStage = forwardRef<
         lastSelectionRef.current = key;
       },
       isSelectionSyncSuppressed: () => suppressSelectionSyncRef.current,
+      shouldHandleCoreDocumentEdits: () => businessCommandRef.current == null,
     });
 
     const handleMouseDown = (evt: { e?: Event }) => {
@@ -352,7 +373,6 @@ export const FabricStage = forwardRef<
       next[5] += dy;
       viewportTransformRef.current = next;
       canvas.setViewportTransform(next);
-      onViewportTransformChange?.(cloneViewportTransform(next));
       canvas.requestRenderAll();
     };
 
@@ -372,9 +392,6 @@ export const FabricStage = forwardRef<
       canvas.zoomToPoint(zoomPoint, nextZoom);
       viewportTransformRef.current = cloneViewportTransform(
         canvas.viewportTransform as FabricViewportTransform,
-      );
-      onViewportTransformChange?.(
-        cloneViewportTransform(viewportTransformRef.current),
       );
       canvas.requestRenderAll();
     };
@@ -427,17 +444,20 @@ export const FabricStage = forwardRef<
       objectMapRef.current.clear();
       backgroundMapRef.current.clear();
     };
-  }, [canvasSize, editor, onViewportTransformChange]);
+  }, [canvasSize, editor]);
 
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
 
+    const selectionSyncEnabled = businessCommand == null;
+    const syncedSelection = selectionSyncEnabled ? selection : [];
     const activeObject = canvas.getActiveObject();
-    const selectionKey = selection.join(",");
+    const selectionKey = syncedSelection.join(",");
     const canvasSelectionIds = getCanvasSelectionIds(canvas);
     const canvasSelectionKey = canvasSelectionIds.join(",");
-    const shouldRebuildSelection = selectionKey !== canvasSelectionKey;
+    const shouldRebuildSelection =
+      selectionSyncEnabled && selectionKey !== canvasSelectionKey;
 
     if (shouldRebuildSelection) {
       suppressSelectionSyncRef.current = true;
@@ -451,24 +471,24 @@ export const FabricStage = forwardRef<
       { width: `${canvasSize.width}px`, height: `${canvasSize.height}px` },
       { cssOnly: true },
     );
-    canvas.set({ backgroundColor: document.canvas.backgroundColor });
+    canvas.set({ backgroundColor: renderDocument.canvas.backgroundColor });
     canvas.setViewportTransform(
       cloneViewportTransform(viewportTransformRef.current),
     );
 
     const objectMap = objectMapRef.current;
     const backgroundMap = backgroundMapRef.current;
-    const selectedIds = new Set(selection);
+    const selectedIds = new Set(syncedSelection);
 
     for (const [id, obj] of objectMap.entries()) {
-      if (!document.scene.nodes[id]) {
+      if (!renderDocument.scene.nodes[id]) {
         canvas.remove(obj);
         objectMap.delete(id);
       }
     }
 
     for (const [id, obj] of backgroundMap.entries()) {
-      const node = document.scene.nodes[id];
+      const node = renderDocument.scene.nodes[id];
       if (
         !node ||
         (node.fabricObject.type !== "textbox" &&
@@ -479,8 +499,8 @@ export const FabricStage = forwardRef<
       }
     }
 
-    for (const id of document.scene.order) {
-      const node = document.scene.nodes[id];
+    for (const id of renderDocument.scene.order) {
+      const node = renderDocument.scene.nodes[id];
       if (!node) continue;
 
       const existing = objectMap.get(id);
@@ -496,7 +516,7 @@ export const FabricStage = forwardRef<
           {
             preserveTransform: preserveGroupedTransform,
           },
-          document.domain.标注样式,
+          renderDocument.domain.标注样式,
         );
         applySelectionAppearance(existing, selectedIds.has(id));
         existing.setCoords();
@@ -508,7 +528,7 @@ export const FabricStage = forwardRef<
           obj,
           viewState,
           undefined,
-          document.domain.标注样式,
+          renderDocument.domain.标注样式,
         );
         applySelectionAppearance(obj, selectedIds.has(id));
         obj.setCoords();
@@ -520,7 +540,7 @@ export const FabricStage = forwardRef<
       if (currentObject?.type === "textbox" || currentObject?.type === "text") {
         const desiredShape = getAnnotationBackgroundShape(
           node,
-          document.domain.标注样式,
+          renderDocument.domain.标注样式,
         );
         const existingBackground = backgroundMap.get(id);
 
@@ -551,7 +571,7 @@ export const FabricStage = forwardRef<
             node,
             currentObject as never,
             background,
-            document.domain.标注样式,
+            renderDocument.domain.标注样式,
             (currentObject as FabricObject & { visible?: boolean }).visible !==
               false,
           );
@@ -566,7 +586,7 @@ export const FabricStage = forwardRef<
       }
     }
 
-    for (const id of document.scene.order) {
+    for (const id of renderDocument.scene.order) {
       const background = backgroundMap.get(id);
       if (background) {
         canvas.bringObjectToFront(background);
@@ -577,13 +597,14 @@ export const FabricStage = forwardRef<
     }
 
     const needsSelectionSync =
-      selectionKey !== lastSelectionRef.current || shouldRebuildSelection;
+      selectionSyncEnabled &&
+      (selectionKey !== lastSelectionRef.current || shouldRebuildSelection);
     if (needsSelectionSync) {
       lastSelectionRef.current = selectionKey;
 
       suppressSelectionSyncRef.current = true;
       canvas.discardActiveObject();
-      const selected = selection
+      const selected = syncedSelection
         .map((id) => objectMap.get(id))
         .filter(
           (o): o is FabricObject =>
@@ -599,20 +620,53 @@ export const FabricStage = forwardRef<
         canvas.setActiveObject(activeSelection);
       }
       suppressSelectionSyncRef.current = false;
+    } else if (!selectionSyncEnabled) {
+      lastSelectionRef.current = "";
     }
 
     // Force a sync render to avoid cases where RAF scheduling is dropped.
     canvas.renderAll();
-  }, [canvasSize, document, selection, viewState]);
+  }, [businessCommand, canvasSize, renderDocument, selection, viewState]);
 
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
 
+    if (businessCommand && activeToolId === "select-lasso") {
+      canvas.defaultCursor = "crosshair";
+      canvas.isDrawingMode = false;
+      canvas.skipTargetFind = false;
+      canvas.selection = false;
+      return () => undefined;
+    }
+
+    if (businessCommand && !isBusinessSelectionTool(activeToolId)) {
+      canvas.defaultCursor = "default";
+      canvas.isDrawingMode = false;
+      canvas.skipTargetFind = false;
+      canvas.selection = false;
+      return () => undefined;
+    }
+
     return bindFabricToolEvents({
       canvas,
       editor,
       activeToolId,
+    });
+  }, [activeToolId, businessCommand, editor]);
+
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+
+    return bindFabricBusinessCommandEvents({
+      canvas,
+      getDocument: () => sourceDocumentRef.current,
+      getRenderDocument: () => renderDocumentRef.current,
+      getBusinessCommand: () => businessCommandRef.current,
+      activeToolId,
+      subscribe: editor.edit.subscribe,
+      updateBusinessCommand: (updater) => editor.edit.updateBusinessCommand(updater),
     });
   }, [activeToolId, editor]);
 

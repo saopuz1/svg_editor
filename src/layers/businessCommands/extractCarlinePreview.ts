@@ -184,10 +184,6 @@ export function buildExtractCarlinePreviewDocument(
   };
 }
 
-function generateCarlineId(): string {
-  return `carline-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-}
-
 export function applyExtractCarlineSession(
   base: DocumentState,
   session: ExtractCarlineSession,
@@ -203,10 +199,11 @@ export function applyExtractCarlineSession(
   let globalOrder = restoredCount;
 
   for (const areaDraft of getPreviewAreas(session)) {
-    for (const _selectedLine of areaDraft.selectedLines) {
+    for (const selectedLine of areaDraft.selectedLines) {
       globalOrder++;
       carlines.push({
-        id: generateCarlineId(),
+        // Keep domain carline id aligned with the corresponding scene node id.
+        id: selectedLine.nodeId,
         编号: globalOrder,
         区域: areaDraft.areaName,
         尺数: areaDraft.carlineLength,

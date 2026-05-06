@@ -1,6 +1,14 @@
 import type { DataLayer } from "../data/store";
 import type { DocumentState, NodeId } from "../data/types";
 import type { EditorCommand, TransientAction } from "./commands";
+import {
+  applyBusinessCommandState,
+  createBusinessCommandState,
+  resetDocumentForBusinessCommand,
+  type ActiveBusinessCommandState,
+  type BusinessCommandId,
+} from "./businessCommandsState";
+import { createCommand } from "./commands";
 import { CommandRegistry } from "./commandRegistry";
 import { HistoryManager, type HistoryEntry } from "./history";
 import {
@@ -16,6 +24,7 @@ export interface EditState {
   tools: EditorTool[];
   selection: NodeId[];
   availableCommands: Array<EditorCommand["type"]>;
+  businessCommand: ActiveBusinessCommandState | null;
 }
 
 export class EditLayer {
@@ -39,6 +48,7 @@ export class EditLayer {
       tools: DEFAULT_TOOLS,
       selection: [],
       availableCommands: this.commandRegistry.getTypes(),
+      businessCommand: null,
     };
   }
 
@@ -61,6 +71,80 @@ export class EditLayer {
 
   getActiveTool(): EditorTool {
     return getTool(this.editState.tools, this.editState.activeToolId);
+  }
+
+  openBusinessCommand(kind: BusinessCommandId) {
+    this.editState = {
+      ...this.editState,
+      selection: [],
+      businessCommand: createBusinessCommandState(kind, this.data.getState()),
+    };
+    this.emit();
+  }
+
+  closeBusinessCommand() {
+    if (!this.editState.businessCommand) return;
+    this.editState = { ...this.editState, businessCommand: null };
+    this.emit();
+  }
+
+  replaceBusinessCommand(next: ActiveBusinessCommandState | null) {
+    this.editState = {
+      ...this.editState,
+      businessCommand: next,
+    };
+    this.emit();
+  }
+
+  updateBusinessCommand(
+    updater: (
+      current: ActiveBusinessCommandState,
+    ) => ActiveBusinessCommandState | null,
+  ) {
+    const current = this.editState.businessCommand;
+    if (!current) return;
+    this.editState = {
+      ...this.editState,
+      businessCommand: updater(current),
+    };
+    this.emit();
+  }
+
+  restartBusinessCommand() {
+    const current = this.editState.businessCommand;
+    if (!current) return;
+    const nextDocument = resetDocumentForBusinessCommand(
+      this.data.getState(),
+      current.kind,
+    );
+    this.execute(
+      createCommand("加载文档", { document: nextDocument }, "system"),
+      "重新开始业务命令",
+    );
+    this.editState = {
+      ...this.editState,
+      businessCommand: createBusinessCommandState(current.kind, nextDocument),
+      selection: [],
+    };
+    this.emit();
+  }
+
+  commitBusinessCommand() {
+    const current = this.editState.businessCommand;
+    if (!current) return;
+    const nextDocument = applyBusinessCommandState(
+      this.data.getState(),
+      current,
+    );
+    this.editState = {
+      ...this.editState,
+      businessCommand: null,
+      selection: [],
+    };
+    this.execute(
+      createCommand("加载文档", { document: nextDocument }, "system"),
+      this.resolveBusinessCommandCommitLabel(current.kind),
+    );
   }
 
   execute(command: EditorCommand, label?: string) {
@@ -180,5 +264,16 @@ export class EditLayer {
     return this.commandRegistry.execute(state, command, {
       now: new Date().toISOString(),
     });
+  }
+
+  private resolveBusinessCommandCommitLabel(kind: BusinessCommandId) {
+    switch (kind) {
+      case "extract-carline":
+        return "提取车线";
+      case "mark-gear":
+        return "标记档位";
+      case "mark-odd-even":
+        return "标记单双";
+    }
   }
 }

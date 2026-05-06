@@ -5,6 +5,11 @@ import type {
   EditorNode,
   NodeId,
 } from "../data/types";
+import {
+  buildBusinessCommandLabelLayout,
+  resolveBusinessCommandAnnotationAnchor,
+  resolveBusinessCommandLabelFontSize,
+} from "./businessCommandLabelStyle";
 
 // ─── DML 值计算 ───────────────────────────────────────────────────────────────
 
@@ -85,7 +90,7 @@ export function computeDmlAssignments(
 
 /**
  * 获取 DML 标注的放置位置：
- * 优先取该车线对应的「车线编号」标注节点的 left/top，
+ * 优先取该车线对应的「车线编号」标注节点中心锚点，
  * 若不存在则 fallback 到车线节点自身坐标。
  */
 function resolveDmlPosition(
@@ -102,22 +107,21 @@ function resolveDmlPosition(
       typeof node.fabricObject.left === "number" &&
       typeof node.fabricObject.top === "number"
     ) {
-      return {
-        x: node.fabricObject.left as number,
-        y: node.fabricObject.top as number,
-      };
+      return resolveBusinessCommandAnnotationAnchor(node);
     }
   }
 
   // Fallback：车线节点自身坐标
   const node = doc.scene.nodes[carlineNodeId];
   return {
-    x: typeof node?.fabricObject.left === "number"
-      ? (node.fabricObject.left as number)
-      : 0,
-    y: typeof node?.fabricObject.top === "number"
-      ? (node.fabricObject.top as number)
-      : 0,
+    x:
+      typeof node?.fabricObject.left === "number"
+        ? (node.fabricObject.left as number)
+        : 0,
+    y:
+      typeof node?.fabricObject.top === "number"
+        ? (node.fabricObject.top as number)
+        : 0,
   };
 }
 
@@ -128,6 +132,7 @@ function createDmlAnnotationNode(
   carlineId: string,
   dmlValue: DmlValue,
   position: { x: number; y: number },
+  fontSize: number,
 ): EditorNode {
   return {
     id: dmlNodeId,
@@ -138,16 +143,10 @@ function createDmlAnnotationNode(
     business: { type: "标注", 字段: "DML", 归属车线Id: carlineId },
     fabricObject: {
       type: "textbox",
-      left: position.x,
-      top: position.y,
       text: dmlValue,
       fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
-      fontSize: 18,
       fill: "#111111",
-      width: 40,
-      textAlign: "center",
-      originX: "left",
-      originY: "top",
+      ...buildBusinessCommandLabelLayout(dmlValue, position, fontSize),
       selectable: false,
       evented: false,
     },
@@ -166,6 +165,7 @@ function createDmlAnnotationNode(
  */
 export function applyDmlModifiers(doc: DocumentState): DocumentState {
   const modifiers = doc.domain.自动修改器;
+  const dmlFontSize = resolveBusinessCommandLabelFontSize(doc, "DML");
 
   // Step 1：移除现有 DML 标注节点
   const existingDmlIds = new Set<NodeId>();
@@ -214,6 +214,7 @@ export function applyDmlModifiers(doc: DocumentState): DocumentState {
       carlineNode.business.id,
       dmlValue,
       position,
+      dmlFontSize,
     );
     if (!nextOrder.includes(dmlNodeId)) {
       nextOrder.push(dmlNodeId);

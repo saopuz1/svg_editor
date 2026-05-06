@@ -1,20 +1,16 @@
 import type { BusinessCommandConfirmDialog } from "../../../components/BusinessCommandDialog";
 import type { DocumentState } from "../../data/types";
-import type { SurfaceViewportTransform } from "../surfaces/BusinessCommandSvgSurface";
-
-export type BusinessCommandId =
-  | "extract-carline"
-  | "mark-gear"
-  | "mark-odd-even";
+import type { ActiveBusinessCommandState } from "../../edit/businessCommandsState";
+export type { BusinessCommandId } from "../../edit/businessCommandsState";
 
 export interface BusinessCommandCanvasHostProps {
   open: boolean;
   document: DocumentState;
-  svgMarkup: string;
-  viewportTransform: SurfaceViewportTransform;
-  onDocumentChange: (next: DocumentState) => void;
+  activeCommand: ActiveBusinessCommandState | null;
+  onSessionChange: (next: ActiveBusinessCommandState | null) => void;
   onClose: () => void;
-  onCommit: (next: DocumentState) => void;
+  onRestart: () => void;
+  onCommit: () => void;
 }
 
 export type BusinessCommandConfirmState = "exit" | "restart" | null;

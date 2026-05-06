@@ -1,9 +1,14 @@
 import type { DocumentState, EditorNode } from "../data/types";
 
-export type BusinessCommandAnnotationField = "车线编号" | "档位" | "单双";
+export type BusinessCommandAnnotationField =
+  | "车线编号"
+  | "档位"
+  | "单双"
+  | "DML";
 
 export const DEFAULT_BUSINESS_COMMAND_LABEL_FONT_SIZE = 18;
-export const MIN_BUSINESS_COMMAND_LABEL_FONT_SIZE = 8;
+// Allow smaller labels for dense drawings; UI inputs and clamping use this value.
+export const MIN_BUSINESS_COMMAND_LABEL_FONT_SIZE = 4;
 export const MAX_BUSINESS_COMMAND_LABEL_FONT_SIZE = 72;
 
 const MIN_LABEL_WIDTH = 28;
@@ -86,15 +91,16 @@ export function buildBusinessCommandLabelLayout(
     MIN_LABEL_WIDTH,
     normalizedFontSize * (textLength + 1),
   );
+  const height = normalizedFontSize * 1.1;
 
   return {
-    left: position.x,
-    top: position.y,
+    left: position.x - width / 2,
+    top: position.y - height / 2,
     width,
     fontSize: normalizedFontSize,
     textAlign: "center" as const,
-    originX: "center" as const,
-    originY: "center" as const,
+    originX: "left" as const,
+    originY: "top" as const,
   };
 }
 

@@ -1,25 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { BusinessCommandDialog } from "../../../components/BusinessCommandDialog";
-import {
-  BusinessCommandSvgSurface,
-  type LineHighlightInfo,
-  type SurfaceLabelItem,
-} from "../surfaces/BusinessCommandSvgSurface";
 import {
   EXTRACT_CARLINE_AREA_PRESETS,
   type ExtractCarlineSession,
 } from "../businessCommandTypes";
 import {
-  applyExtractCarlineSession,
-  getAreaColor,
-} from "../extractCarlinePreview";
-import {
   commitExtractCarlineCurrentArea,
-  createExtractCarlineSession,
-  createExtractCarlineSessionFromDocument,
   removeCurrentExtractCarlineLine,
-  toggleCurrentExtractCarlineLines,
-  updateExtractCarlineLabelPosition,
   updateExtractCarlineCurrentDraft,
   validateExtractCarlineAreaName,
 } from "../extractCarlineSession";
@@ -28,7 +15,6 @@ import {
   MIN_BUSINESS_COMMAND_LABEL_FONT_SIZE,
   clampBusinessCommandLabelFontSize,
 } from "../businessCommandLabelStyle";
-import { resetDocumentForExtractCarline } from "../businessCommandReset";
 import {
   createBusinessCommandConfirmDialog,
   type BusinessCommandCanvasHostProps,
@@ -38,28 +24,17 @@ import {
 export function ExtractCarlineHost({
   open,
   document,
-  svgMarkup,
-  viewportTransform,
-  onDocumentChange,
+  activeCommand,
+  onSessionChange,
   onClose,
+  onRestart,
   onCommit,
 }: BusinessCommandCanvasHostProps) {
-  const [session, setSession] = useState<ExtractCarlineSession | null>(null);
   const [validationError, setValidationError] = useState("");
   const [confirmState, setConfirmState] =
     useState<BusinessCommandConfirmState>(null);
-
-  useEffect(() => {
-    if (!open) {
-      setSession(null);
-      setValidationError("");
-      setConfirmState(null);
-      return;
-    }
-    setSession(createExtractCarlineSessionFromDocument(document));
-    setValidationError("");
-    setConfirmState(null);
-  }, [document, open]);
+  const session =
+    activeCommand?.kind === "extract-carline" ? activeCommand.session : null;
 
   const confirmDialog = useMemo(
     () =>
@@ -73,14 +48,12 @@ export function ExtractCarlineHost({
           onClose();
         },
         onRestart: () => {
-          const nextDocument = resetDocumentForExtractCarline(document);
-          onDocumentChange(nextDocument);
-          setSession(createExtractCarlineSession(nextDocument));
           setValidationError("");
           setConfirmState(null);
+          onRestart();
         },
       }),
-    [confirmState, document, onClose, onDocumentChange],
+    [confirmState, onClose, onRestart],
   );
 
   const currentDraft = session?.currentDraft ?? null;
@@ -114,8 +87,9 @@ export function ExtractCarlineHost({
       (item) => item.id === presetId,
     );
     if (!preset) return;
-    setSession(
-      updateExtractCarlineCurrentDraft(session, {
+    onSessionChange({
+      kind: "extract-carline",
+      session: updateExtractCarlineCurrentDraft(session, {
         presetId,
         areaName:
           presetId === "自定义"
@@ -130,7 +104,7 @@ export function ExtractCarlineHost({
               : preset.carlineLength
             : preset.carlineLength,
       }),
-    );
+    });
     setValidationError("");
   };
 
@@ -170,11 +144,12 @@ export function ExtractCarlineHost({
                 min={1}
                 value={currentDraft.carlineLength}
                 onChange={(event) => {
-                  setSession(
-                    updateExtractCarlineCurrentDraft(session, {
+                  onSessionChange({
+                    kind: "extract-carline",
+                    session: updateExtractCarlineCurrentDraft(session, {
                       carlineLength: Number(event.currentTarget.value) || 0,
                     }),
-                  );
+                  });
                 }}
               />
             </div>
@@ -188,13 +163,14 @@ export function ExtractCarlineHost({
                 max={MAX_BUSINESS_COMMAND_LABEL_FONT_SIZE}
                 value={currentDraft.labelFontSize}
                 onChange={(event) => {
-                  setSession(
-                    updateExtractCarlineCurrentDraft(session, {
+                  onSessionChange({
+                    kind: "extract-carline",
+                    session: updateExtractCarlineCurrentDraft(session, {
                       labelFontSize: clampBusinessCommandLabelFontSize(
                         Number(event.currentTarget.value),
                       ),
                     }),
-                  );
+                  });
                 }}
               />
             </div>
@@ -207,11 +183,12 @@ export function ExtractCarlineHost({
               value={currentDraft.areaName}
               disabled={currentDraft.presetId !== "自定义"}
               onChange={(event) => {
-                setSession(
-                  updateExtractCarlineCurrentDraft(session, {
+                onSessionChange({
+                  kind: "extract-carline",
+                  session: updateExtractCarlineCurrentDraft(session, {
                     areaName: event.currentTarget.value,
                   }),
-                );
+                });
                 setValidationError("");
               }}
               placeholder="请输入区域名称"
@@ -269,14 +246,13 @@ export function ExtractCarlineHost({
                         type="button"
                         className="businessDialogSelectionAction"
                         onClick={() => {
-                          setSession((prev) =>
-                            prev
-                              ? removeCurrentExtractCarlineLine(
-                                  prev,
-                                  line.nodeId,
-                                )
-                              : prev,
-                          );
+                          onSessionChange({
+                            kind: "extract-carline",
+                            session: removeCurrentExtractCarlineLine(
+                              session,
+                              line.nodeId,
+                            ),
+                          });
                         }}
                       >
                         删除
@@ -352,11 +328,15 @@ export function ExtractCarlineHost({
               }
               if (result.session.completedAreas.length === 0) {
                 if (session.currentDraft.selectedLines.length > 0) {
-                  onCommit(applyExtractCarlineSession(document, session));
+                  onCommit();
                 }
                 return;
               }
-              onCommit(applyExtractCarlineSession(document, result.session));
+              onSessionChange({
+                kind: "extract-carline",
+                session: result.session,
+              });
+              onCommit();
             }}
             disabled={!hasAnyArea}
           >
@@ -367,7 +347,10 @@ export function ExtractCarlineHost({
             className="btn btnPrimary"
             onClick={() => {
               const result = commitExtractCarlineCurrentArea(session);
-              setSession(result.session);
+              onSessionChange({
+                kind: "extract-carline",
+                session: result.session,
+              });
               setValidationError(result.validationError ?? "");
             }}
             disabled={!canCommitNextArea}
@@ -379,117 +362,17 @@ export function ExtractCarlineHost({
     );
   }, [canCommitNextArea, document, hasAnyArea, onCommit, session]);
 
-  const candidateNodeIds = useMemo<ReadonlySet<string>>(() => {
-    const ids = new Set<string>();
-    if (session) {
-      for (const id of document.scene.order) {
-        const node = document.scene.nodes[id];
-        if (
-          node &&
-          node.business.type !== "车线" &&
-          (node.fabricObject.type === "line" ||
-            node.fabricObject.type === "path")
-        ) {
-          ids.add(node.id);
-        }
-      }
-    }
-    return ids;
-  }, [document, session]);
-
-  const lineHighlightMap = useMemo<
-    ReadonlyMap<string, LineHighlightInfo>
-  >(() => {
-    const map = new Map<string, LineHighlightInfo>();
-    if (!session) return map;
-    session.completedAreas.forEach((area, index) => {
-      const color = getAreaColor(index);
-      area.selectedLines.forEach((line) => {
-        map.set(line.nodeId, { color, isUsed: true });
-      });
-    });
-    const currentColor = getAreaColor(session.completedAreas.length);
-    session.currentDraft.selectedLines.forEach((line) => {
-      map.set(line.nodeId, { color: currentColor, isUsed: false });
-    });
-    return map;
-  }, [session]);
-
-  const previewLabels = useMemo<SurfaceLabelItem[]>(() => {
-    if (!session) return [];
-    let globalOrder = restoredLineCount;
-    const completed = newCompletedAreas.flatMap((area, index) => {
-      const color = getAreaColor(index);
-      return area.selectedLines.map((line) => {
-        globalOrder += 1;
-        return {
-          key: `${area.areaName}-${line.nodeId}`,
-          nodeId: line.nodeId,
-          text: String(globalOrder),
-          x: line.hitPoint.x,
-          y: line.hitPoint.y,
-          color,
-          fontSize: area.labelFontSize,
-        };
-      });
-    });
-    const currentColor = getAreaColor(newCompletedAreas.length);
-    const current = session.currentDraft.selectedLines.map((line) => {
-      globalOrder += 1;
-      return {
-        key: `${session.currentDraft.areaName}-${line.nodeId}`,
-        nodeId: line.nodeId,
-        text: String(globalOrder),
-        x: line.hitPoint.x,
-        y: line.hitPoint.y,
-        color: currentColor,
-        fontSize: session.currentDraft.labelFontSize,
-      };
-    });
-    return [...completed, ...current];
-  }, [newCompletedAreas, restoredLineCount, session]);
-
   if (!open || !session) return null;
 
   return (
-    <>
-      <BusinessCommandSvgSurface
-        document={document}
-        svgMarkup={svgMarkup}
-        viewportTransform={viewportTransform}
-        candidateNodeIds={candidateNodeIds}
-        lineHighlightMap={lineHighlightMap}
-        previewLabels={previewLabels}
-        onMoveLabel={(nodeId, markerPos) => {
-          setSession((prev) =>
-            prev
-              ? updateExtractCarlineLabelPosition(prev, nodeId, markerPos)
-              : prev,
-          );
-        }}
-        onToggleLine={(nodeId, markerPos) => {
-          setSession((prev) =>
-            prev
-              ? toggleCurrentExtractCarlineLines(prev, [
-                  {
-                    nodeId,
-                    hitPoint: markerPos,
-                    hitOrder: prev.currentDraft.selectedLines.length,
-                  },
-                ])
-              : prev,
-          );
-        }}
-      />
-      <BusinessCommandDialog
-        open={open}
-        title="提取车线"
-        summary="业务命令模式使用独立 SVG 命中层，不走普通编辑选中态。"
-        confirmDialog={confirmDialog}
-        onRequestClose={() => setConfirmState("exit")}
-        bodyContent={bodyContent}
-        footerContent={footerContent}
-      />
-    </>
+    <BusinessCommandDialog
+      open={open}
+      title="提取车线"
+      summary="画布交互已切换到 Fabric 命中与预览，面板负责参数和流程控制。"
+      confirmDialog={confirmDialog}
+      onRequestClose={() => setConfirmState("exit")}
+      bodyContent={bodyContent}
+      footerContent={footerContent}
+    />
   );
 }

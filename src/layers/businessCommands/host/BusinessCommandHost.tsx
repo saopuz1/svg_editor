@@ -2,8 +2,8 @@ import { ExtractCarlineHost } from "./ExtractCarlineHost";
 import { MarkGearHost } from "./MarkGearHost";
 import { MarkOddEvenHost } from "./MarkOddEvenHost";
 import type {
-  BusinessCommandCanvasHostProps,
   BusinessCommandId,
+  BusinessCommandCanvasHostProps,
 } from "./businessCommandHostShared";
 
 interface BusinessCommandHostProps extends BusinessCommandCanvasHostProps {

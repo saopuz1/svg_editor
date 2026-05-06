@@ -1,7 +1,37 @@
 import type { DocumentState } from "./types";
 
+function buildExportDomainCarlines(state: DocumentState): DocumentState["domain"]["车线"] {
+  const result: DocumentState["domain"]["车线"] = [];
+  for (const id of state.scene.order) {
+    const node = state.scene.nodes[id];
+    if (!node) continue;
+    if (node.business.type !== "车线") continue;
+    result.push({
+      id: node.business.id,
+      编号: node.business.编号,
+      区域: node.business.区域,
+      尺数: node.business.尺数,
+      档位: node.business.档位,
+      DML: node.business.DML,
+      是双数: node.business.是双数,
+      标注NodeId: node.business.标注NodeId,
+    });
+  }
+  return result;
+}
+
 export function serializeDocument(state: DocumentState): string {
-  return JSON.stringify(state, null, 2);
+  return JSON.stringify(
+    {
+      ...state,
+      domain: {
+        ...state.domain,
+        车线: buildExportDomainCarlines(state),
+      },
+    },
+    null,
+    2,
+  );
 }
 
 function createEmptyDomain(): DocumentState["domain"] {
