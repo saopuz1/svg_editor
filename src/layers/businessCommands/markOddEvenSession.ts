@@ -1,4 +1,5 @@
 import type { DocumentState, EditorNode, NodeId } from "../data/types";
+import { ensureAnnotationNodeId } from "../data/idRules";
 import type {
   HitLineResult,
   MarkOddEvenSelectedLine,
@@ -11,23 +12,23 @@ import {
   resolveBusinessCommandLabelFontSize,
   resolveFirstAnnotationFontSize,
 } from "./businessCommandLabelStyle";
-
-const DOUBLE_ANNOTATION_PREFIX = "double-annotation/";
+import { resetDocumentForMarkOddEven } from "./businessCommandReset";
 
 // ─── 创建"双"标注节点 ────────────────────────────────────────────────────────
 
 function createDoubleAnnotationNode(
-  nodeId: NodeId,
+  annotationNodeId: NodeId,
+  carlineNodeId: NodeId,
   hitPoint: { x: number; y: number },
   labelFontSize: number,
 ): EditorNode {
   return {
-    id: `${DOUBLE_ANNOTATION_PREFIX}${nodeId}`,
+    id: annotationNodeId,
     name: "双数标注",
     locked: true,
     hidden: false,
     zIndex: 0,
-    business: { type: "标注", 字段: "单双", 归属车线Id: nodeId },
+    business: { type: "标注", 字段: "单双", 归属车线Id: carlineNodeId },
     fabricObject: {
       type: "textbox",
       text: "双",
@@ -94,8 +95,10 @@ export function createMarkOddEvenSession(
     })
     .map((id) => {
       const node = document.scene.nodes[id]!;
-      // 优先从已写入的标注节点还原 hitPoint（left+20, top+10 是中心）
-      const annotationId = `${DOUBLE_ANNOTATION_PREFIX}${id}`;
+      const annotationId =
+        node.business.type === "车线"
+          ? node.business.标注NodeId.单双
+          : ensureAnnotationNodeId("单双");
       const annotationNode = document.scene.nodes[annotationId];
       if (
         annotationNode &&
@@ -196,7 +199,9 @@ export function buildMarkOddEvenPreviewDocument(
   session: MarkOddEvenSession,
 ): { document: DocumentState; previewLabelNodeIds: NodeId[] } {
   const doubleIds = getMarkOddEvenDoubleNodeIds(session);
-  const doubleLineMap = new Map(session.doubleLines.map((line) => [line.nodeId, line]));
+  const doubleLineMap = new Map(
+    session.doubleLines.map((line) => [line.nodeId, line]),
+  );
 
   const filteredNodes = Object.fromEntries(
     Object.entries(base.scene.nodes).filter(([, node]) => {
@@ -217,17 +222,28 @@ export function buildMarkOddEvenPreviewDocument(
   for (const id of session.carlineNodeIds) {
     const node = nextNodes[id];
     if (!node || node.business.type !== "车线") continue;
+    const nextAnnotationNodeId = ensureAnnotationNodeId(
+      "单双",
+      node.business.标注NodeId.单双,
+    );
     nextNodes[id] = {
       ...node,
       business: {
         ...node.business,
         是双数: doubleIds.has(id),
+        标注NodeId: {
+          ...node.business.标注NodeId,
+          单双: nextAnnotationNodeId,
+        },
       },
     };
   }
 
   for (const line of doubleLineMap.values()) {
+    const carlineNode = nextNodes[line.nodeId];
+    if (!carlineNode || carlineNode.business.type !== "车线") continue;
     const annotationNode = createDoubleAnnotationNode(
+      carlineNode.business.标注NodeId.单双,
       line.nodeId,
       line.hitPoint,
       session.labelFontSize,
@@ -260,19 +276,27 @@ export function applyMarkOddEvenSession(
   session: MarkOddEvenSession,
 ): DocumentState {
   const { document: previewDocument } = buildMarkOddEvenPreviewDocument(
-    base,
+    resetDocumentForMarkOddEven(base),
     session,
   );
   const doubleIds = getMarkOddEvenDoubleNodeIds(session);
 
   // 同步更新 domain.车线
-  const nextCarlines = base.domain.车线.map((carline) => {
+  const nextCarlines = previewDocument.domain.车线.map((carline) => {
+    const sceneNode = previewDocument.scene.nodes[carline.id];
     if (!session.carlineNodeIds.includes(carline.id)) return carline;
-    return { ...carline, 是双数: doubleIds.has(carline.id) };
+    if (!sceneNode || sceneNode.business.type !== "车线") {
+      return { ...carline, 是双数: doubleIds.has(carline.id) };
+    }
+    return {
+      ...carline,
+      是双数: doubleIds.has(carline.id),
+      标注NodeId: sceneNode.business.标注NodeId,
+    };
   });
 
   return {
     ...previewDocument,
-    domain: { ...base.domain, 车线: nextCarlines },
+    domain: { ...previewDocument.domain, 车线: nextCarlines },
   };
 }

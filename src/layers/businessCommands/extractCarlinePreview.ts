@@ -6,8 +6,9 @@ import type {
   PreviewLabelNodeSpec,
   ExtractCarlineSession,
 } from "./businessCommandTypes";
-import { createAnnotationNodeIdMap } from "../data/idRules";
+import { ensureLineNodeId } from "../data/idRules";
 import { buildBusinessCommandLabelLayout } from "./businessCommandLabelStyle";
+import { resetDocumentForExtractCarline } from "./businessCommandReset";
 
 const PREVIEW_LABEL_NODE_PREFIX = "__preview__/extract-carline/label/";
 
@@ -63,6 +64,7 @@ function buildPreviewLabelSpecs(
     position: { ...selectedLine.hitPoint },
     areaName: areaDraft.areaName,
     fontSize: areaDraft.labelFontSize,
+    color: areaDraft.labelColor,
   }));
 }
 
@@ -81,12 +83,40 @@ function createPreviewLabelNode(spec: PreviewLabelNodeSpec): EditorNode {
       type: "textbox",
       text: spec.text,
       fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
-      fill: "#111111",
+      fill: spec.color,
       ...buildBusinessCommandLabelLayout(
         spec.text,
         spec.position,
         spec.fontSize,
       ),
+      selectable: false,
+      evented: false,
+    },
+  };
+}
+
+function createCommittedCodeLabelNode(args: {
+  id: NodeId;
+  carlineNodeId: NodeId;
+  text: string;
+  position: { x: number; y: number };
+  fontSize: number;
+  color: string;
+}): EditorNode {
+  const { id, carlineNodeId, text, position, fontSize, color } = args;
+  return {
+    id,
+    name: `车线编号 ${text}`,
+    locked: true,
+    hidden: false,
+    zIndex: 0,
+    business: { type: "标注", 字段: "车线编号", 归属车线Id: carlineNodeId },
+    fabricObject: {
+      type: "textbox",
+      text,
+      fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+      fill: color,
+      ...buildBusinessCommandLabelLayout(text, position, fontSize),
       selectable: false,
       evented: false,
     },
@@ -188,11 +218,19 @@ export function applyExtractCarlineSession(
   base: DocumentState,
   session: ExtractCarlineSession,
 ): DocumentState {
-  const result = buildExtractCarlinePreviewDocument(base, session);
-  const nextDocument = result.document;
-
+  const nextDocument = resetDocumentForExtractCarline(base);
+  const selectedLineMap = new Map<
+    NodeId,
+    {
+      areaDraft: ExtractCarlineAreaDraft;
+      order: number;
+      hitPoint: { x: number; y: number };
+    }
+  >();
   const carlines: DocumentState["domain"]["车线"] = [];
-  // isRestored 区域已写入 domain，新增编号从已有车线总数后续开始
+  const nextNodes: DocumentState["scene"]["nodes"] = {};
+  const nextOrder: NodeId[] = [];
+
   const restoredCount = session.completedAreas
     .filter((a) => a.isRestored)
     .reduce((sum, a) => sum + a.selectedLines.length, 0);
@@ -201,24 +239,73 @@ export function applyExtractCarlineSession(
   for (const areaDraft of getPreviewAreas(session)) {
     for (const selectedLine of areaDraft.selectedLines) {
       globalOrder++;
-      carlines.push({
-        // Keep domain carline id aligned with the corresponding scene node id.
-        id: selectedLine.nodeId,
-        编号: globalOrder,
-        区域: areaDraft.areaName,
-        尺数: areaDraft.carlineLength,
-        档位: "",
-        DML: "D",
-        是双数: false,
-        标注NodeId: createAnnotationNodeIdMap(),
+      selectedLineMap.set(selectedLine.nodeId, {
+        areaDraft,
+        order: globalOrder,
+        hitPoint: { ...selectedLine.hitPoint },
       });
     }
   }
 
-  nextDocument.domain = {
-    ...nextDocument.domain,
-    车线: carlines,
-  };
+  for (const id of nextDocument.scene.order) {
+    const node = nextDocument.scene.nodes[id];
+    if (!node) continue;
+    const selected = selectedLineMap.get(id);
+    if (!selected || !isExtractableLineNode(node)) {
+      nextNodes[id] = node;
+      nextOrder.push(id);
+      continue;
+    }
 
-  return nextDocument;
+    const nextNodeId = ensureLineNodeId("车线", id);
+    const nextCarlineBusiness = {
+      ...createDefaultCarlineBusiness(nextNodeId),
+      编号: selected.order,
+      区域: selected.areaDraft.areaName,
+      车线编号: `${selected.areaDraft.areaName}${String(selected.order).padStart(2, "0")}`,
+      尺数: selected.areaDraft.carlineLength,
+    };
+    const nextCarlineNode: EditorNode = {
+      ...node,
+      id: nextNodeId,
+      business: nextCarlineBusiness,
+    };
+    nextNodes[nextNodeId] = nextCarlineNode;
+    nextOrder.push(nextNodeId);
+
+    const codeNodeId = nextCarlineBusiness.标注NodeId.车线编号;
+    nextNodes[codeNodeId] = createCommittedCodeLabelNode({
+      id: codeNodeId,
+      carlineNodeId: nextNodeId,
+      text: String(selected.order),
+      position: selected.hitPoint,
+      fontSize: selected.areaDraft.labelFontSize,
+      color: selected.areaDraft.labelColor,
+    });
+    nextOrder.push(codeNodeId);
+
+    carlines.push({
+      id: nextCarlineBusiness.id,
+      编号: nextCarlineBusiness.编号,
+      区域: nextCarlineBusiness.区域,
+      尺数: nextCarlineBusiness.尺数,
+      档位: nextCarlineBusiness.档位,
+      DML: nextCarlineBusiness.DML,
+      是双数: nextCarlineBusiness.是双数,
+      标注NodeId: nextCarlineBusiness.标注NodeId,
+    });
+  }
+
+  return {
+    ...nextDocument,
+    scene: {
+      ...nextDocument.scene,
+      nodes: nextNodes,
+      order: nextOrder,
+    },
+    domain: {
+      ...nextDocument.domain,
+      车线: carlines,
+    },
+  };
 }

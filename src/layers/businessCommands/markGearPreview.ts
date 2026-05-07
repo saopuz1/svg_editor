@@ -1,9 +1,11 @@
 import type { DocumentState, EditorNode, NodeId } from "../data/types";
+import { ensureAnnotationNodeId } from "../data/idRules";
 import type {
   MarkGearSelectedLine,
   MarkGearSession,
 } from "./businessCommandTypes";
 import { buildBusinessCommandLabelLayout } from "./businessCommandLabelStyle";
+import { resetDocumentForMarkGear } from "./businessCommandReset";
 
 const PREVIEW_GEAR_LABEL_PREFIX = "__preview__/mark-gear/label/";
 
@@ -33,6 +35,7 @@ function createGearPreviewLabelNode(
   gearNumber: number,
   hitPoint: { x: number; y: number },
   labelFontSize: number,
+  labelColor: string,
 ): EditorNode {
   return {
     id: `${PREVIEW_GEAR_LABEL_PREFIX}${nodeId}/gear${gearNumber}`,
@@ -46,7 +49,40 @@ function createGearPreviewLabelNode(
       type: "textbox",
       text: String(gearNumber),
       fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
-      fill: "#111111",
+      fill: labelColor,
+      ...buildBusinessCommandLabelLayout(
+        String(gearNumber),
+        hitPoint,
+        labelFontSize,
+      ),
+      selectable: false,
+      evented: false,
+    },
+  };
+}
+
+function createCommittedGearLabelNode(args: {
+  id: NodeId;
+  carlineNodeId: NodeId;
+  gearNumber: number;
+  hitPoint: { x: number; y: number };
+  labelFontSize: number;
+  labelColor: string;
+}): EditorNode {
+  const { id, carlineNodeId, gearNumber, hitPoint, labelFontSize, labelColor } =
+    args;
+  return {
+    id,
+    name: `档位标注 ${gearNumber}`,
+    locked: true,
+    hidden: false,
+    zIndex: 0,
+    business: { type: "标注", 字段: "档位", 归属车线Id: carlineNodeId },
+    fabricObject: {
+      type: "textbox",
+      text: String(gearNumber),
+      fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+      fill: labelColor,
       ...buildBusinessCommandLabelLayout(
         String(gearNumber),
         hitPoint,
@@ -76,11 +112,13 @@ export function buildMarkGearPreviewDocument(
   const allGears: Array<{
     gearNumber: number;
     labelFontSize: number;
+    labelColor: string;
     lines: MarkGearSelectedLine[];
   }> = [
     ...session.completedGears.map((g) => ({
       gearNumber: g.gearNumber,
       labelFontSize: g.labelFontSize,
+      labelColor: g.labelColor,
       lines: g.selectedLines,
     })),
     ...(session.currentLines.length > 0
@@ -88,19 +126,21 @@ export function buildMarkGearPreviewDocument(
           {
             gearNumber: session.currentGearNumber,
             labelFontSize: session.currentLabelFontSize,
+            labelColor: session.currentLabelColor,
             lines: session.currentLines,
           },
         ]
       : []),
   ];
 
-  for (const { gearNumber, labelFontSize, lines } of allGears) {
+  for (const { gearNumber, labelFontSize, labelColor, lines } of allGears) {
     for (const line of lines) {
       const labelNode = createGearPreviewLabelNode(
         line.nodeId,
         gearNumber,
         line.hitPoint,
         labelFontSize,
+        labelColor,
       );
       next.scene.nodes[labelNode.id] = labelNode;
       previewLabelNodeIds.push(labelNode.id);
@@ -124,57 +164,99 @@ export function applyMarkGearSession(
   base: DocumentState,
   session: MarkGearSession,
 ): DocumentState {
-  const { document: previewDoc } = buildMarkGearPreviewDocument(base, session);
+  const cleanDocument = resetDocumentForMarkGear(base);
 
-  // 收集 nodeId → 最终档位编号（多档时取最后一次标记的档位）
-  const nodeGearMap = new Map<NodeId, number>();
+  const nodeGearMap = new Map<
+    NodeId,
+    {
+      gearNumber: number;
+      labelFontSize: number;
+      labelColor: string;
+      hitPoint: { x: number; y: number };
+    }
+  >();
 
-  const allGears: Array<{ gearNumber: number; lines: MarkGearSelectedLine[] }> =
-    [
-      ...session.completedGears.map((g) => ({
-        gearNumber: g.gearNumber,
-        lines: g.selectedLines,
-      })),
-      ...(session.currentLines.length > 0
-        ? [
-            {
-              gearNumber: session.currentGearNumber,
-              lines: session.currentLines,
-            },
-          ]
-        : []),
-    ];
+  const allGears: Array<{
+    gearNumber: number;
+    labelFontSize: number;
+    labelColor: string;
+    lines: MarkGearSelectedLine[];
+  }> = [
+    ...session.completedGears.map((g) => ({
+      gearNumber: g.gearNumber,
+      labelFontSize: g.labelFontSize,
+      labelColor: g.labelColor,
+      lines: g.selectedLines,
+    })),
+    ...(session.currentLines.length > 0
+      ? [
+          {
+            gearNumber: session.currentGearNumber,
+            labelFontSize: session.currentLabelFontSize,
+            labelColor: session.currentLabelColor,
+            lines: session.currentLines,
+          },
+        ]
+      : []),
+  ];
 
-  for (const { gearNumber, lines } of allGears) {
+  for (const { gearNumber, labelFontSize, labelColor, lines } of allGears) {
     for (const line of lines) {
-      nodeGearMap.set(line.nodeId, gearNumber);
+      nodeGearMap.set(line.nodeId, {
+        gearNumber,
+        labelFontSize,
+        labelColor,
+        hitPoint: { ...line.hitPoint },
+      });
     }
   }
 
-  // 把档位写入对应车线节点的 business 字段
-  const nextNodes = { ...previewDoc.scene.nodes };
-  for (const [nodeId, gearNumber] of nodeGearMap) {
+  const nextNodes = { ...cleanDocument.scene.nodes };
+  for (const [nodeId, gear] of nodeGearMap) {
     const node = nextNodes[nodeId];
     if (!node || node.business.type !== "车线") continue;
+    const nextAnnotationNodeId = ensureAnnotationNodeId(
+      "档位",
+      node.business.标注NodeId.档位,
+    );
     nextNodes[nodeId] = {
       ...node,
       business: {
         ...node.business,
-        档位: String(gearNumber),
+        档位: String(gear.gearNumber),
+        标注NodeId: {
+          ...node.business.标注NodeId,
+          档位: nextAnnotationNodeId,
+        },
       },
     };
+    nextNodes[nextAnnotationNodeId] = createCommittedGearLabelNode({
+      id: nextAnnotationNodeId,
+      carlineNodeId: nodeId,
+      gearNumber: gear.gearNumber,
+      hitPoint: gear.hitPoint,
+      labelFontSize: gear.labelFontSize,
+      labelColor: gear.labelColor,
+    });
+    cleanDocument.scene.order.push(nextAnnotationNodeId);
   }
 
   // 同时更新 domain.车线 里对应的档位字段
-  const nextCarlines = previewDoc.domain.车线.map((carline) => {
-    const gearNumber = nodeGearMap.get(carline.id);
-    if (gearNumber == null) return carline;
-    return { ...carline, 档位: String(gearNumber) };
+  const nextCarlines = cleanDocument.domain.车线.map((carline) => {
+    const gear = nodeGearMap.get(carline.id);
+    const sceneNode = nextNodes[carline.id];
+    if (!gear || !sceneNode || sceneNode.business.type !== "车线")
+      return carline;
+    return {
+      ...carline,
+      档位: String(gear.gearNumber),
+      标注NodeId: sceneNode.business.标注NodeId,
+    };
   });
 
   return {
-    ...previewDoc,
-    scene: { ...previewDoc.scene, nodes: nextNodes },
-    domain: { ...previewDoc.domain, 车线: nextCarlines },
+    ...cleanDocument,
+    scene: { ...cleanDocument.scene, nodes: nextNodes },
+    domain: { ...cleanDocument.domain, 车线: nextCarlines },
   };
 }

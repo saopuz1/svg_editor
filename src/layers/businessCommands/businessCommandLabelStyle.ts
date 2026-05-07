@@ -1,3 +1,4 @@
+import { resolveNodeAnnotationStyle } from "../data/annotationStyles";
 import type { DocumentState, EditorNode } from "../data/types";
 
 export type BusinessCommandAnnotationField =
@@ -7,6 +8,8 @@ export type BusinessCommandAnnotationField =
   | "DML";
 
 export const DEFAULT_BUSINESS_COMMAND_LABEL_FONT_SIZE = 18;
+export const DEFAULT_EXTRACT_CARLINE_LABEL_COLOR = "#22c55e";
+export const DEFAULT_MARK_GEAR_LABEL_COLOR = "#7c3aed";
 // Allow smaller labels for dense drawings; UI inputs and clamping use this value.
 export const MIN_BUSINESS_COMMAND_LABEL_FONT_SIZE = 4;
 export const MAX_BUSINESS_COMMAND_LABEL_FONT_SIZE = 72;
@@ -18,10 +21,29 @@ function isFiniteNumber(value: unknown): value is number {
 }
 
 function readNodeFontSize(node?: EditorNode) {
-  const fontSize = node?.fabricObject.fontSize;
+  if (!node) return null;
+  const fontSize = resolveNodeAnnotationStyle(node, {}).字号;
   return isFiniteNumber(fontSize)
     ? clampBusinessCommandLabelFontSize(fontSize)
     : null;
+}
+
+function isValidHexColor(value: string) {
+  return /^#([0-9a-fA-F]{6})$/.test(value);
+}
+
+export function normalizeBusinessCommandLabelColor(
+  value: string | null | undefined,
+  fallback: string,
+) {
+  if (!value) return fallback;
+  return isValidHexColor(value) ? value : fallback;
+}
+
+function readNodeColor(node?: EditorNode) {
+  if (!node) return null;
+  const color = resolveNodeAnnotationStyle(node, {}).字色;
+  return typeof color === "string" && color.trim() !== "" ? color : null;
 }
 
 function resolveOriginFactor(origin: string | undefined) {
@@ -50,6 +72,26 @@ export function resolveBusinessCommandLabelFontSize(
     : DEFAULT_BUSINESS_COMMAND_LABEL_FONT_SIZE;
 }
 
+export function resolveBusinessCommandLabelColor(
+  document: DocumentState,
+  field: BusinessCommandAnnotationField,
+  fallback: string,
+) {
+  for (const id of document.scene.order) {
+    const node = document.scene.nodes[id];
+    if (!node || node.business.type !== "标注") continue;
+    if (node.business.字段 !== field) continue;
+    const color = readNodeColor(node);
+    if (color) return normalizeBusinessCommandLabelColor(color, fallback);
+  }
+
+  const configuredColor = document.domain.标注样式[field]?.字色;
+  return normalizeBusinessCommandLabelColor(
+    typeof configuredColor === "string" ? configuredColor : null,
+    fallback,
+  );
+}
+
 export function resolveFirstAnnotationFontSize(
   document: DocumentState,
   field: BusinessCommandAnnotationField,
@@ -62,6 +104,21 @@ export function resolveFirstAnnotationFontSize(
     if (fontSize !== null) return fontSize;
   }
   return null;
+}
+
+export function resolveFirstAnnotationColor(
+  document: DocumentState,
+  field: BusinessCommandAnnotationField,
+  fallback: string,
+) {
+  for (const id of document.scene.order) {
+    const node = document.scene.nodes[id];
+    if (!node || node.business.type !== "标注") continue;
+    if (node.business.字段 !== field) continue;
+    const color = readNodeColor(node);
+    if (color) return normalizeBusinessCommandLabelColor(color, fallback);
+  }
+  return resolveBusinessCommandLabelColor(document, field, fallback);
 }
 
 export function resolveCarlineAnnotationFontSize(
@@ -78,6 +135,23 @@ export function resolveCarlineAnnotationFontSize(
     if (fontSize !== null) return fontSize;
   }
   return null;
+}
+
+export function resolveCarlineAnnotationColor(
+  document: DocumentState,
+  field: BusinessCommandAnnotationField,
+  carlineNodeId: string,
+  fallback: string,
+) {
+  for (const id of document.scene.order) {
+    const node = document.scene.nodes[id];
+    if (!node || node.business.type !== "标注") continue;
+    if (node.business.字段 !== field) continue;
+    if (node.business.归属车线Id !== carlineNodeId) continue;
+    const color = readNodeColor(node);
+    if (color) return normalizeBusinessCommandLabelColor(color, fallback);
+  }
+  return resolveBusinessCommandLabelColor(document, field, fallback);
 }
 
 export function buildBusinessCommandLabelLayout(

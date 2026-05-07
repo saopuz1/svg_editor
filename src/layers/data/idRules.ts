@@ -14,7 +14,7 @@ export const NODE_ID_PREFIX_RULES = {
   text: "text",
   generic: "node",
   annotation: {
-    车线编号: "stitching",
+    车线编号: "code",
     区域: "area",
     档位: "level",
     单双: "double",
@@ -24,6 +24,10 @@ export const NODE_ID_PREFIX_RULES = {
 
 function createPrefixedNodeId(prefix: string): NodeId {
   return `${prefix}-${crypto.randomUUID()}`;
+}
+
+function hasNodeIdPrefix(nodeId: NodeId | undefined, prefix: string) {
+  return typeof nodeId === "string" && nodeId.startsWith(`${prefix}-`);
 }
 
 export function createLineNodeId(type: "非车线" | "车线"): NodeId {
@@ -42,6 +46,28 @@ export function createAnnotationNodeId(field: AnnotationField): NodeId {
   return createPrefixedNodeId(NODE_ID_PREFIX_RULES.annotation[field]);
 }
 
+export function ensureLineNodeId(
+  type: "非车线" | "车线",
+  nodeId?: NodeId,
+): NodeId {
+  const prefix = NODE_ID_PREFIX_RULES.line[type];
+  if (hasNodeIdPrefix(nodeId, prefix) && nodeId) {
+    return nodeId;
+  }
+  return createLineNodeId(type);
+}
+
+export function ensureAnnotationNodeId(
+  field: AnnotationField,
+  nodeId?: NodeId,
+): NodeId {
+  const prefix = NODE_ID_PREFIX_RULES.annotation[field];
+  if (hasNodeIdPrefix(nodeId, prefix) && nodeId) {
+    return nodeId;
+  }
+  return createAnnotationNodeId(field);
+}
+
 export function createAnnotationNodeIdMap(): AnnotationNodeIdMap {
   return {
     车线编号: createAnnotationNodeId("车线编号"),
@@ -55,7 +81,7 @@ export function createNodeIdForBusiness(
   fabricType: string,
   business: NodeBusiness,
 ): NodeId {
-  if (fabricType === "path") {
+  if (fabricType === "path" || fabricType === "line") {
     return createLineNodeId(business.type === "车线" ? "车线" : "非车线");
   }
 
@@ -75,7 +101,7 @@ export function shouldRegenerateNodeIdOnBusinessChange(
 ) {
   const fabricType = node.fabricObject.type;
 
-  if (fabricType === "path") {
+  if (fabricType === "path" || fabricType === "line") {
     return node.business.type !== nextBusiness.type;
   }
 

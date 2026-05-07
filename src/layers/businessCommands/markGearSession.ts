@@ -6,7 +6,9 @@ import type {
   MarkGearSession,
 } from "./businessCommandTypes";
 import {
+  DEFAULT_MARK_GEAR_LABEL_COLOR,
   resolveBusinessCommandLabelFontSize,
+  resolveFirstAnnotationColor,
   resolveFirstAnnotationFontSize,
 } from "./businessCommandLabelStyle";
 
@@ -26,11 +28,17 @@ export function createMarkGearSession(
   const currentLabelFontSize =
     resolveFirstAnnotationFontSize(document, "档位") ??
     resolveBusinessCommandLabelFontSize(document, "档位");
+  const currentLabelColor = resolveFirstAnnotationColor(
+    document,
+    "档位",
+    DEFAULT_MARK_GEAR_LABEL_COLOR,
+  );
 
   return {
     type: "标记档位",
     currentGearNumber: 1,
     currentLabelFontSize,
+    currentLabelColor,
     currentLines: [],
     completedGears: [],
     carlineNodeIds,
@@ -146,6 +154,7 @@ export function commitMarkGearCurrentGear(session: MarkGearSession): {
   const completed: MarkGearCompletedGear = {
     gearNumber: session.currentGearNumber,
     labelFontSize: session.currentLabelFontSize,
+    labelColor: session.currentLabelColor,
     selectedLines: cloneLines(session.currentLines),
   };
 
@@ -154,6 +163,7 @@ export function commitMarkGearCurrentGear(session: MarkGearSession): {
       ...session,
       currentGearNumber: session.currentGearNumber + 1,
       currentLabelFontSize: session.currentLabelFontSize,
+      currentLabelColor: session.currentLabelColor,
       currentLines: [],
       completedGears: [...session.completedGears, completed],
     },

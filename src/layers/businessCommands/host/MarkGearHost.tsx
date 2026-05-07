@@ -4,6 +4,7 @@ import {
   MAX_BUSINESS_COMMAND_LABEL_FONT_SIZE,
   MIN_BUSINESS_COMMAND_LABEL_FONT_SIZE,
   clampBusinessCommandLabelFontSize,
+  normalizeBusinessCommandLabelColor,
 } from "../businessCommandLabelStyle";
 import { getGearColor } from "../markGearPreview";
 import {
@@ -125,6 +126,27 @@ export function MarkGearHost({
             />
           </div>
 
+          <div className="row extractCarlineAreaNameRow">
+            <div className="label">本档颜色</div>
+            <input
+              className="input"
+              type="color"
+              value={normalizeBusinessCommandLabelColor(
+                session.currentLabelColor,
+                  "#7c3aed",
+              )}
+              onChange={(event) => {
+                onSessionChange({
+                  kind: "mark-gear",
+                  session: {
+                    ...session,
+                    currentLabelColor: event.currentTarget.value,
+                  },
+                });
+              }}
+            />
+          </div>
+
           <div className="businessDialogHint extractCarlineHint">
             只能勾选车线（绿色显示的线条）。点击单选；拖动刷选。所有车线全部标记完成后才能点击「完成」。
           </div>
@@ -202,7 +224,9 @@ export function MarkGearHost({
                       {gear.gearNumber} 档
                     </span>
                     <span>
-                      {gear.selectedLines.length} 条线 / {gear.labelFontSize}px
+                      <span style={{ color: gear.labelColor }}>
+                        {gear.selectedLines.length} 条线 / {gear.labelFontSize}px
+                      </span>
                     </span>
                   </div>
                 ))

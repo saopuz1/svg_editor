@@ -66,6 +66,7 @@ export interface ExtractCarlineAreaOptionDraft {
   areaName: string;
   carlineLength: number;
   labelFontSize: number;
+  labelColor: string;
 }
 
 export interface ExtractCarlineSelectedLine {
@@ -78,6 +79,7 @@ export interface ExtractCarlineAreaDraft {
   presetId: AreaPresetId;
   carlineLength: number;
   labelFontSize: number;
+  labelColor: string;
   selectedLines: ExtractCarlineSelectedLine[];
 }
 
@@ -99,6 +101,7 @@ export interface PreviewLabelNodeSpec {
   position: CanvasPoint;
   areaName: string;
   fontSize: number;
+  color: string;
 }
 
 export interface ExtractCarlinePreviewResult {
@@ -119,6 +122,7 @@ export interface MarkGearCompletedGear {
   /** 档位编号，从 1 开始 */
   gearNumber: number;
   labelFontSize: number;
+  labelColor: string;
   selectedLines: MarkGearSelectedLine[];
 }
 
@@ -129,6 +133,8 @@ export interface MarkGearSession {
   currentGearNumber: number;
   /** 当前档位标注字号 */
   currentLabelFontSize: number;
+  /** 当前档位标注颜色 */
+  currentLabelColor: string;
   /** 当前档位已勾选的线条 */
   currentLines: MarkGearSelectedLine[];
   /** 已完成的档位列表 */

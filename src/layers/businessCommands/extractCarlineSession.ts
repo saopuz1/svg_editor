@@ -10,7 +10,10 @@ import {
   type HitLineResult,
 } from "./businessCommandTypes";
 import {
+  DEFAULT_EXTRACT_CARLINE_LABEL_COLOR,
   resolveBusinessCommandLabelFontSize,
+  resolveBusinessCommandLabelColor,
+  resolveCarlineAnnotationColor,
   resolveCarlineAnnotationFontSize,
 } from "./businessCommandLabelStyle";
 
@@ -29,6 +32,7 @@ function cloneAreaDraft(
     presetId: draft.presetId,
     carlineLength: draft.carlineLength,
     labelFontSize: draft.labelFontSize,
+    labelColor: draft.labelColor,
     selectedLines: cloneSelectedLines(draft.selectedLines),
   };
 }
@@ -78,6 +82,11 @@ export function createExtractCarlineSession(
     document,
     "车线编号",
   );
+  const defaultLabelColor = resolveBusinessCommandLabelColor(
+    document,
+    "车线编号",
+    DEFAULT_EXTRACT_CARLINE_LABEL_COLOR,
+  );
   return {
     type: "提取车线",
     currentDraft: createExtractCarlineAreaDraft({
@@ -85,6 +94,7 @@ export function createExtractCarlineSession(
       areaName: EXTRACT_CARLINE_AREA_PRESETS[0]?.areaName ?? "",
       carlineLength: EXTRACT_CARLINE_AREA_PRESETS[0]?.carlineLength ?? 10,
       labelFontSize: defaultLabelFontSize,
+      labelColor: defaultLabelColor,
     }),
     completedAreas: [],
   };
@@ -101,6 +111,11 @@ export function createExtractCarlineSessionFromDocument(
   const defaultLabelFontSize = resolveBusinessCommandLabelFontSize(
     document,
     "车线编号",
+  );
+  const defaultLabelColor = resolveBusinessCommandLabelColor(
+    document,
+    "车线编号",
+    DEFAULT_EXTRACT_CARLINE_LABEL_COLOR,
   );
   // 按区域名称聚合已有车线节点
   const areaMap = new Map<
@@ -148,6 +163,17 @@ export function createExtractCarlineSessionFromDocument(
         )
         .find((value): value is number => value !== null) ??
       defaultLabelFontSize;
+    const labelColor =
+      lines
+        .map((line) =>
+          resolveCarlineAnnotationColor(
+            document,
+            "车线编号",
+            line.nodeId,
+            defaultLabelColor,
+          ),
+        )
+        .find(Boolean) ?? defaultLabelColor;
     const preset = EXTRACT_CARLINE_AREA_PRESETS.find(
       (p) => p.areaName === areaName,
     );
@@ -156,6 +182,7 @@ export function createExtractCarlineSessionFromDocument(
       presetId: preset?.id ?? "自定义",
       carlineLength,
       labelFontSize,
+      labelColor,
       selectedLines: lines.map((l) => ({
         nodeId: l.nodeId,
         hitPoint: l.hitPoint,
@@ -175,6 +202,7 @@ export function createExtractCarlineSessionFromDocument(
       areaName: nextPreset.id === "自定义" ? "" : nextPreset.areaName,
       carlineLength: nextPreset.carlineLength,
       labelFontSize: defaultLabelFontSize,
+      labelColor: defaultLabelColor,
     }),
     completedAreas,
   };
@@ -228,6 +256,7 @@ export function createExtractCarlineAreaDraft(
     presetId: option.presetId,
     carlineLength: option.carlineLength,
     labelFontSize: option.labelFontSize,
+    labelColor: option.labelColor,
     selectedLines: [],
   };
 }
@@ -294,6 +323,7 @@ export function commitExtractCarlineCurrentArea(
         areaName: nextPreset?.areaName ?? "",
         carlineLength: nextPreset?.carlineLength ?? 10,
         labelFontSize: currentDraft.labelFontSize,
+        labelColor: currentDraft.labelColor,
       }),
     },
     validationError: null,

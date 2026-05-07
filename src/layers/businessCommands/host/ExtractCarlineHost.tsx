@@ -14,6 +14,7 @@ import {
   MAX_BUSINESS_COMMAND_LABEL_FONT_SIZE,
   MIN_BUSINESS_COMMAND_LABEL_FONT_SIZE,
   clampBusinessCommandLabelFontSize,
+  normalizeBusinessCommandLabelColor,
 } from "../businessCommandLabelStyle";
 import {
   createBusinessCommandConfirmDialog,
@@ -174,6 +175,26 @@ export function ExtractCarlineHost({
                 }}
               />
             </div>
+
+            <div className="row">
+              <div className="label">编号颜色</div>
+              <input
+                className="input"
+                type="color"
+                value={normalizeBusinessCommandLabelColor(
+                  currentDraft.labelColor,
+                  "#22c55e",
+                )}
+                onChange={(event) => {
+                  onSessionChange({
+                    kind: "extract-carline",
+                    session: updateExtractCarlineCurrentDraft(session, {
+                      labelColor: event.currentTarget.value,
+                    }),
+                  });
+                }}
+              />
+            </div>
           </div>
 
           <div className="row extractCarlineAreaNameRow">
@@ -277,7 +298,9 @@ export function ExtractCarlineHost({
                   >
                     <span>{area.areaName}</span>
                     <span>
-                      {area.selectedLines.length} 条线 / {area.labelFontSize}px
+                      <span style={{ color: area.labelColor }}>
+                        {area.selectedLines.length} 条线 / {area.labelFontSize}px
+                      </span>
                     </span>
                   </div>
                 ))
