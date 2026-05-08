@@ -27,10 +27,6 @@ body,
 
 body {
   margin: 0;
-}
-
-.svgEditorHost {
-  height: 100%;
   overflow: hidden;
 }
 

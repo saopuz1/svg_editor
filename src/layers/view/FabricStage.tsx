@@ -143,7 +143,96 @@ type FabricMouseWheelEvent = {
   viewportPoint?: Point;
 };
 
-export function buildExportSvg(document: DocumentState, viewState: ViewState) {
+type ExportBounds = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+};
+
+const EXPORT_PADDING = 12;
+
+function getTextExportPadding(obj: FabricObject) {
+  const fontSize = Number(
+    (obj as FabricObject & { fontSize?: unknown }).fontSize,
+  );
+  if (Number.isFinite(fontSize) && fontSize > 0) {
+    return Math.max(8, fontSize * 0.45);
+  }
+  return 10;
+}
+
+function getObjectExportBounds(obj: FabricObject): ExportBounds | null {
+  if ((obj as FabricObject & { visible?: boolean }).visible === false) {
+    return null;
+  }
+
+  try {
+    obj.setCoords();
+    const rect = obj.getBoundingRect();
+    const left = Number(rect.left);
+    const top = Number(rect.top);
+    const width = Number(rect.width);
+    const height = Number(rect.height);
+    if (
+      ![left, top, width, height].every((value) => Number.isFinite(value)) ||
+      width <= 0 ||
+      height <= 0
+    ) {
+      return null;
+    }
+
+    let bounds: ExportBounds = {
+      left,
+      top,
+      right: left + width,
+      bottom: top + height,
+    };
+
+    if (obj.type === "text" || obj.type === "textbox") {
+      const padding = getTextExportPadding(obj);
+      bounds = {
+        left: bounds.left - padding,
+        top: bounds.top - padding,
+        right: bounds.right + padding,
+        bottom: bounds.bottom + padding,
+      };
+    }
+
+    return bounds;
+  } catch {
+    return null;
+  }
+}
+
+function mergeExportBounds(
+  current: ExportBounds | null,
+  next: ExportBounds | null,
+): ExportBounds | null {
+  if (!next) return current;
+  if (!current) return next;
+  return {
+    left: Math.min(current.left, next.left),
+    top: Math.min(current.top, next.top),
+    right: Math.max(current.right, next.right),
+    bottom: Math.max(current.bottom, next.bottom),
+  };
+}
+
+function updateSvgRootSize(
+  svg: string,
+  viewBox: { left: number; top: number; width: number; height: number },
+) {
+  return svg.replace(/<svg\b([^>]*)>/i, (_, attrs: string) => {
+    const cleaned = attrs
+      .replace(/\swidth="[^"]*"/i, "")
+      .replace(/\sheight="[^"]*"/i, "")
+      .replace(/\sviewBox="[^"]*"/i, "");
+    return `<svg${cleaned} width="${viewBox.width}" height="${viewBox.height}" viewBox="${viewBox.left} ${viewBox.top} ${viewBox.width} ${viewBox.height}">`;
+  });
+}
+
+function buildExportSvg(document: DocumentState, viewState: ViewState) {
   const exportEl = globalThis.document.createElement("canvas");
   const exportCanvas = new StaticCanvas(exportEl, {
     backgroundColor: document.canvas.backgroundColor || "#ffffff",
@@ -192,7 +281,43 @@ export function buildExportSvg(document: DocumentState, viewState: ViewState) {
     exportCanvas.add(obj);
   }
 
-  const svg = exportCanvas.toSVG();
+  let exportBounds: ExportBounds | null = null;
+  for (const obj of exportCanvas.getObjects()) {
+    exportBounds = mergeExportBounds(exportBounds, getObjectExportBounds(obj));
+  }
+
+  const croppedViewBox = exportBounds
+    ? {
+        left: exportBounds.left - EXPORT_PADDING,
+        top: exportBounds.top - EXPORT_PADDING,
+        width: Math.max(1, exportBounds.right - exportBounds.left + EXPORT_PADDING * 2),
+        height: Math.max(
+          1,
+          exportBounds.bottom - exportBounds.top + EXPORT_PADDING * 2,
+        ),
+      }
+    : null;
+
+  const svg = updateSvgRootSize(
+    exportCanvas.toSVG(
+      croppedViewBox
+        ? {
+            viewBox: {
+              x: croppedViewBox.left,
+              y: croppedViewBox.top,
+              width: croppedViewBox.width,
+              height: croppedViewBox.height,
+            },
+          }
+        : undefined,
+    ),
+    croppedViewBox ?? {
+      left: 0,
+      top: 0,
+      width: document.canvas.width,
+      height: document.canvas.height,
+    },
+  );
   exportCanvas.dispose();
   return svg;
 }
