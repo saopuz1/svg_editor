@@ -5,6 +5,7 @@ import type {
   EditorNode,
   NodeId,
 } from "../data/types";
+import { ensureAnnotationNodeId } from "../data/idRules";
 import {
   buildBusinessCommandLabelLayout,
   resolveBusinessCommandAnnotationAnchor,
@@ -17,16 +18,15 @@ import {
  * 按修改器顺序为所有车线节点计算 DML 值。
  * - 后面的修改器会覆盖前面的（last-write-wins）
  * - 未被任何修改器覆盖的车线不会出现在结果 Map 中
- * - 区间内按「编号」升序排列，循环取 pattern[i % len]
+ * - 区间内按「车线编号」排序后，循环取 pattern[i % len]
  */
 export function computeDmlAssignments(
   doc: DocumentState,
   modifiers: AutoModifierConfig[],
 ): Map<NodeId, DmlValue> {
-  // 收集所有车线节点（保留 nodeId 而非 business.id，便于直接操作 scene）
   const carlines: Array<{
     nodeId: NodeId;
-    编号: number;
+    车线编号: string;
     区域: string;
     档位: string;
   }> = [];
@@ -36,30 +36,72 @@ export function computeDmlAssignments(
     if (!node || node.business.type !== "车线") continue;
     carlines.push({
       nodeId,
-      编号: node.business.编号,
+      车线编号: node.business.车线编号,
       区域: node.business.区域,
       档位: node.business.档位,
     });
   }
 
   const result = new Map<NodeId, DmlValue>();
+  const normalizePercent = (value: unknown) => {
+    const num = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(num)) return 0;
+    const normalized = Math.abs(num) > 1 ? num / 100 : num;
+    return Math.max(0, Math.min(1, normalized));
+  };
+  const parse车线排序值 = (value: unknown): number | null => {
+    const raw = String(value ?? "").trim();
+    if (!raw) return null;
+    const normalized = raw.replace(/[^0-9.+-]/g, "");
+    if (!normalized) return null;
+    const num = Number(normalized);
+    return Number.isFinite(num) ? num : null;
+  };
+  const compare车线顺序 = (
+    a: { 车线编号: string; nodeId: NodeId },
+    b: { 车线编号: string; nodeId: NodeId },
+  ) => {
+    const numA = parse车线排序值(a.车线编号);
+    const numB = parse车线排序值(b.车线编号);
+    if (numA != null && numB != null && numA !== numB) return numA - numB;
+    if (numA != null && numB == null) return -1;
+    if (numA == null && numB != null) return 1;
+
+    const codeCompare = String(a.车线编号 ?? "").localeCompare(
+      String(b.车线编号 ?? ""),
+      undefined,
+      { numeric: true, sensitivity: "base" },
+    );
+    if (codeCompare !== 0) return codeCompare;
+    return String(a.nodeId).localeCompare(String(b.nodeId));
+  };
+  const selectByPercent = <T>(items: T[], start: unknown, end: unknown) => {
+    if (items.length === 0) return [];
+    const from = Math.min(normalizePercent(start), normalizePercent(end));
+    const to = Math.max(normalizePercent(start), normalizePercent(end));
+    if (from === to) {
+      return [
+        items[Math.min(items.length - 1, Math.floor(from * items.length))],
+      ];
+    }
+    return items.filter((_, index) => {
+      const itemStart = index / items.length;
+      const itemEnd = (index + 1) / items.length;
+      return itemStart < to && itemEnd > from;
+    });
+  };
 
   for (const mod of modifiers) {
-    // 未显式设置 启用 时视为启用；仅 false 时跳过
-    if (mod.启用 === false) continue;
     const pattern = mod.规律 as DmlValue[];
     if (pattern.length === 0) continue;
 
     if (mod.type === "按区域自动标注DML") {
       for (const range of mod.范围) {
-        const matching = carlines
-          .filter(
-            (c) =>
-              c.区域 === range.区域 &&
-              c.编号 >= range.开始 &&
-              c.编号 <= range.结束,
-          )
-          .sort((a, b) => a.编号 - b.编号);
+        const matching = selectByPercent(
+          carlines.filter((c) => c.区域 === range.区域).sort(compare车线顺序),
+          range.开始,
+          range.结束,
+        );
 
         matching.forEach((c, idx) => {
           result.set(c.nodeId, pattern[idx % pattern.length]);
@@ -67,14 +109,11 @@ export function computeDmlAssignments(
       }
     } else if (mod.type === "按档位自动标注DML") {
       for (const range of mod.范围) {
-        const matching = carlines
-          .filter(
-            (c) =>
-              c.档位 === range.档位 &&
-              c.编号 >= range.开始 &&
-              c.编号 <= range.结束,
-          )
-          .sort((a, b) => a.编号 - b.编号);
+        const matching = selectByPercent(
+          carlines.filter((c) => c.档位 === range.档位).sort(compare车线顺序),
+          range.开始,
+          range.结束,
+        );
 
         matching.forEach((c, idx) => {
           result.set(c.nodeId, pattern[idx % pattern.length]);
@@ -200,14 +239,23 @@ export function applyDmlModifiers(doc: DocumentState): DocumentState {
     const carlineNode = nextNodes[carlineNodeId];
     if (!carlineNode || carlineNode.business.type !== "车线") continue;
 
-    // 4. 更新车线 business.DML
+    // 3. 创建 DML 标注节点（使用预分配 ID）
+    const dmlNodeId = ensureAnnotationNodeId(
+      "DML",
+      carlineNode.business.标注NodeId.DML,
+    );
+    const nextCarlineBusiness = {
+      ...carlineNode.business,
+      DML: dmlValue,
+      标注NodeId: {
+        ...carlineNode.business.标注NodeId,
+        DML: dmlNodeId,
+      },
+    };
     nextNodes[carlineNodeId] = {
       ...carlineNode,
-      business: { ...carlineNode.business, DML: dmlValue },
+      business: nextCarlineBusiness,
     };
-
-    // 3. 创建 DML 标注节点（使用预分配 ID）
-    const dmlNodeId = carlineNode.business.标注NodeId.DML;
     const position = resolveDmlPosition(cleanDoc, carlineNodeId);
     nextNodes[dmlNodeId] = createDmlAnnotationNode(
       dmlNodeId,

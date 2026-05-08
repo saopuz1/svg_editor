@@ -8,7 +8,7 @@ function buildExportDomainCarlines(state: DocumentState): DocumentState["domain"
     if (node.business.type !== "车线") continue;
     result.push({
       id: node.business.id,
-      编号: node.business.编号,
+      车线编号: node.business.车线编号,
       区域: node.business.区域,
       尺数: node.business.尺数,
       档位: node.business.档位,
@@ -39,8 +39,8 @@ function createEmptyDomain(): DocumentState["domain"] {
     车线: [],
     标注样式: {},
     自动修改器: [
-      { id: crypto.randomUUID(), type: "按区域自动标注DML", 启用: true, 规律: ["D", "M", "L"], 范围: [] },
-      { id: crypto.randomUUID(), type: "按档位自动标注DML", 启用: true, 规律: ["D", "M", "L"], 范围: [] },
+      { id: crypto.randomUUID(), type: "按区域自动标注DML", 规律: ["D", "M", "L"], 范围: [] },
+      { id: crypto.randomUUID(), type: "按档位自动标注DML", 规律: ["D", "M", "L"], 范围: [] },
     ],
   };
 }

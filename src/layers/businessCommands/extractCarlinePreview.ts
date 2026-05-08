@@ -6,7 +6,7 @@ import type {
   PreviewLabelNodeSpec,
   ExtractCarlineSession,
 } from "./businessCommandTypes";
-import { ensureLineNodeId } from "../data/idRules";
+import { ensureAnnotationNodeId, ensureLineNodeId } from "../data/idRules";
 import { buildBusinessCommandLabelLayout } from "./businessCommandLabelStyle";
 import { resetDocumentForExtractCarline } from "./businessCommandReset";
 
@@ -45,9 +45,8 @@ function createPreviewCarlineNode(
     ...node,
     business: {
       ...business,
-      编号: order,
       区域: areaDraft.areaName,
-      车线编号: `${areaDraft.areaName}${String(order).padStart(2, "0")}`,
+      车线编号: String(order),
       尺数: areaDraft.carlineLength,
     },
   };
@@ -260,9 +259,8 @@ export function applyExtractCarlineSession(
     const nextNodeId = ensureLineNodeId("车线", id);
     const nextCarlineBusiness = {
       ...createDefaultCarlineBusiness(nextNodeId),
-      编号: selected.order,
       区域: selected.areaDraft.areaName,
-      车线编号: `${selected.areaDraft.areaName}${String(selected.order).padStart(2, "0")}`,
+      车线编号: String(selected.order),
       尺数: selected.areaDraft.carlineLength,
     };
     const nextCarlineNode: EditorNode = {
@@ -273,7 +271,14 @@ export function applyExtractCarlineSession(
     nextNodes[nextNodeId] = nextCarlineNode;
     nextOrder.push(nextNodeId);
 
-    const codeNodeId = nextCarlineBusiness.标注NodeId.车线编号;
+    const codeNodeId = ensureAnnotationNodeId(
+      "车线编号",
+      nextCarlineBusiness.标注NodeId.车线编号,
+    );
+    nextCarlineBusiness.标注NodeId = {
+      ...nextCarlineBusiness.标注NodeId,
+      车线编号: codeNodeId,
+    };
     nextNodes[codeNodeId] = createCommittedCodeLabelNode({
       id: codeNodeId,
       carlineNodeId: nextNodeId,
@@ -286,7 +291,7 @@ export function applyExtractCarlineSession(
 
     carlines.push({
       id: nextCarlineBusiness.id,
-      编号: nextCarlineBusiness.编号,
+      车线编号: nextCarlineBusiness.车线编号,
       区域: nextCarlineBusiness.区域,
       尺数: nextCarlineBusiness.尺数,
       档位: nextCarlineBusiness.档位,

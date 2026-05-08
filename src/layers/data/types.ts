@@ -34,13 +34,12 @@ export type LineNodeBusiness =
   | {
       type: "车线";
       id: CarlineId;
-      编号: number;
       区域: string;
       车线编号: string;
       尺数: number;
       档位: string;
-      DML: DmlValue;
-      是双数: boolean;
+      DML?: DmlValue;
+      是双数?: boolean;
       标注NodeId: AnnotationNodeIdMap;
     };
 
@@ -137,27 +136,22 @@ export interface EditorNode {
  * 自动修改器（规则栈）配置：
  * 目前以示例形态存在，承载“程序化标注/自动批处理”的入口。
  */
-export type 自动修改器配置 =
-  | {
-      type: "按区域自动标注DML";
-      规律: string[];
-      范围: { 区域: string; 开始: number; 结束: number }[];
-    }
-  | {
-      type: "按档位自动标注DML";
-      规律: string[];
-      范围: { 档位: string; 开始: number; 结束: number }[];
-    };
-
-/**
- * 自动修改器运行时配置（编辑器内部用）：
- * - 业务 JSON 可以不带 `id/启用`
- * - 编辑器 UI 为了稳定渲染/开关需要，可在运行时补齐
- */
-export type AutoModifierConfig = 自动修改器配置 & {
-  id?: string;
-  启用?: boolean;
+type 自动修改器公共字段 = {
+  id: string;
+  规律: string[];
 };
+
+export type 自动修改器配置 =
+  | (自动修改器公共字段 & {
+      type: "按区域自动标注DML";
+      范围: { 区域: string; 开始: number; 结束: number }[];
+    })
+  | (自动修改器公共字段 & {
+      type: "按档位自动标注DML";
+      范围: { 档位: string; 开始: number; 结束: number }[];
+    });
+
+export type AutoModifierConfig = 自动修改器配置;
 
 export interface 标注边框样式 {
   边框形状: "圆形" | "方形";
@@ -179,12 +173,12 @@ export interface 节点显示样式 {
 
 export interface 高针图车线 {
   id: CarlineId;
-  编号: number;
+  车线编号: string;
   区域: string;
   尺数: number;
   档位: string;
-  DML: DML值;
-  是双数: boolean;
+  DML?: DML值;
+  是双数?: boolean;
   标注NodeId: AnnotationNodeIdMap;
 }
 
@@ -199,15 +193,10 @@ export interface 高针图业务数据 {
   标注样式: Partial<{
     车线编号: 标注样式;
     档位: 标注样式;
-    单双: 标注样式;
-    DML: 标注样式;
+    单双?: 标注样式;
+    DML?: 标注样式;
   }>;
   自动修改器: AutoModifierConfig[];
-}
-
-/** 外部接口需要的组合结构：svg + domain（导出时可组装生成）。 */
-export interface 高针图 extends 高针图业务数据 {
-  svg: string;
 }
 
 /** 编辑器内部场景数据：用于编辑/选中/命令/历史的可编辑模型。 */

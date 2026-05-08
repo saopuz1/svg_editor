@@ -358,7 +358,7 @@ export function EditorShell() {
 
   const addModifier = () => {
     const id = crypto.randomUUID();
-    const base = { id, 启用: true, 规律: ["D", "M", "L"] };
+    const base = { id, 规律: ["D", "M", "L"] };
     const next: AutoModifierConfig =
       newModifierType === "按区域自动标注DML"
         ? { ...base, type: "按区域自动标注DML", 范围: [] }
@@ -567,6 +567,26 @@ export function EditorShell() {
             onClick: () => setNodeLocked(selectedNode.id, true),
           },
         ],
+      );
+    }
+
+    if (fieldId === "textContent" && isTextLikeNode(selectedNode)) {
+      return (
+        <div className="row" key={fieldId}>
+          <div className="label">文本内容</div>
+          <textarea
+            className="input"
+            rows={3}
+            value={selectedNode.fabricObject.text ?? ""}
+            onChange={(e) =>
+              patchGraphic(
+                selectedNode.id,
+                { text: e.currentTarget.value },
+                "更新文本内容",
+              )
+            }
+          />
+        </div>
       );
     }
 
@@ -851,14 +871,6 @@ export function EditorShell() {
     }
 
     if (
-      fieldId === "carlineNumber" &&
-      isLineLikeNode(selectedNode) &&
-      selectedNode.business.type === "车线"
-    ) {
-      return renderReadOnlyField(fieldId, "编号", selectedNode.business.编号);
-    }
-
-    if (
       fieldId === "carlineArea" &&
       isLineLikeNode(selectedNode) &&
       selectedNode.business.type === "车线"
@@ -913,7 +925,7 @@ export function EditorShell() {
       isLineLikeNode(selectedNode) &&
       selectedNode.business.type === "车线"
     ) {
-      return renderReadOnlyField(fieldId, "DML", selectedNode.business.DML);
+      return renderReadOnlyField(fieldId, "DML", selectedNode.business.DML ?? "");
     }
 
     if (
@@ -940,22 +952,22 @@ export function EditorShell() {
             {renderReadOnlyField(
               `${fieldId}-carline-code`,
               "车线编号",
-              selectedNode.business.标注NodeId.车线编号,
+              selectedNode.business.标注NodeId.车线编号 ?? "",
             )}
             {renderReadOnlyField(
               `${fieldId}-gear`,
               "档位",
-              selectedNode.business.标注NodeId.档位,
+              selectedNode.business.标注NodeId.档位 ?? "",
             )}
             {renderReadOnlyField(
               `${fieldId}-odd-even`,
               "单双",
-              selectedNode.business.标注NodeId.单双,
+              selectedNode.business.标注NodeId.单双 ?? "",
             )}
             {renderReadOnlyField(
               `${fieldId}-dml`,
               "DML",
-              selectedNode.business.标注NodeId.DML,
+              selectedNode.business.标注NodeId.DML ?? "",
             )}
           </div>
         </details>

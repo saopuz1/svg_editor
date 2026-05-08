@@ -39,13 +39,10 @@ export function createDefaultCarlineBusiness(
   return {
     type: "车线",
     id: nodeId,
-    编号: 1,
     区域: "A",
-    车线编号: "A01",
+    车线编号: "1",
     尺数: 10,
     档位: "1",
-    DML: "M",
-    是双数: false,
     标注NodeId: createAnnotationNodeIdMap(),
   };
 }

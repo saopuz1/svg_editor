@@ -10,6 +10,7 @@ export type InspectorFieldId =
   | "left"
   | "top"
   | "locked"
+  | "textContent"
   | "annotationStyleFontFamily"
   | "annotationStyleFontSize"
   | "annotationStyleTextColor"
@@ -20,7 +21,6 @@ export type InspectorFieldId =
   | "annotationStyleBorderColor"
   | "businessType"
   | "carlineId"
-  | "carlineNumber"
   | "carlineArea"
   | "carlineCode"
   | "carlineSize"
@@ -46,6 +46,10 @@ export function getInspectorSections(node: EditorNode): InspectorSection[] {
     },
   ];
 
+  if (isTextLikeNode(node)) {
+    sections[0].fields.push("textContent");
+  }
+
   const availableBusinessTypes = getAllowedBusinessTypesForFabricType(
     node.fabricObject.type,
   );
@@ -57,7 +61,6 @@ export function getInspectorSections(node: EditorNode): InspectorSection[] {
   if (isLineLikeNode(node) && node.business.type === "车线") {
     businessFields.push(
       "carlineId",
-      "carlineNumber",
       "carlineArea",
       "carlineCode",
       "carlineSize",
