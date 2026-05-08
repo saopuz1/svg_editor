@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "export:react-component": "node edit/exportReactComponent.mjs"
+    "export:react-component": "node scripts/exportReactComponent.mjs"
   },
   "dependencies": {
     "fabric": "^7.3.1",
