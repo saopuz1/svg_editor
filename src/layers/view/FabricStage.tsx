@@ -143,7 +143,7 @@ type FabricMouseWheelEvent = {
   viewportPoint?: Point;
 };
 
-function buildExportSvg(document: DocumentState, viewState: ViewState) {
+export function buildExportSvg(document: DocumentState, viewState: ViewState) {
   const exportEl = globalThis.document.createElement("canvas");
   const exportCanvas = new StaticCanvas(exportEl, {
     backgroundColor: document.canvas.backgroundColor || "#ffffff",

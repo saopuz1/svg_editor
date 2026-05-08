@@ -154,8 +154,9 @@ export interface SvgEditorProps {
 }
 
 export function SvgEditor({ className, style }: SvgEditorProps) {
+  const hostClassName = ["svgEditorHost", className].filter(Boolean).join(" ");
   return (
-    <div className={className} style={style}>
+    <div className={hostClassName} style={style}>
       <EditorProvider>
         <EditorShell />
       </EditorProvider>

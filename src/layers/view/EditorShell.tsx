@@ -10,6 +10,7 @@ import { BusinessCommandHost } from "../businessCommands/host/BusinessCommandHos
 import type {
   AnnotationField,
   AutoModifierConfig,
+  DocumentState,
   NodeBusiness,
   NodeId,
   标注样式,
@@ -246,7 +247,13 @@ function iconForTool(toolId: ToolId) {
   }
 }
 
-export function EditorShell() {
+export function EditorShell({
+  headerRight,
+  onDocumentStateChange,
+}: {
+  headerRight?: React.ReactNode;
+  onDocumentStateChange?: (document: DocumentState) => void;
+} = {}) {
   const editor = useEditor();
   const document = useDocumentState();
   const editState = useEditState();
@@ -275,6 +282,10 @@ export function EditorShell() {
   const history = editor.edit.getHistory();
   const isExtractCarlineHostOpen =
     activeBusinessCommand?.kind === "extract-carline";
+
+  useEffect(() => {
+    onDocumentStateChange?.(document);
+  }, [document, onDocumentStateChange]);
 
   const selectedNode = useMemo(() => {
     const id = selection[0];
@@ -1261,6 +1272,7 @@ export function EditorShell() {
             <span>
               画布：{document.canvas.width}×{document.canvas.height}
             </span>
+            {headerRight}
           </div>
         </div>
 

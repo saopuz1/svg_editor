@@ -13,9 +13,17 @@ import { createEditor } from '../kernel/createEditor';
 
 const EditorContext = createContext<Editor | null>(null);
 
-export function EditorProvider({ children }: { children: ReactNode }) {
+export function EditorProvider({
+  children,
+  editor,
+}: {
+  children: ReactNode;
+  editor?: Editor | null;
+}) {
   const editorRef = useRef<Editor | null>(null);
-  if (!editorRef.current) {
+  if (editor) {
+    editorRef.current = editor;
+  } else if (!editorRef.current) {
     editorRef.current = createEditor();
   }
 
