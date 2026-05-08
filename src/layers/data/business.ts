@@ -6,7 +6,6 @@ import type {
   NodeId,
   TextNodeBusiness,
 } from "./types";
-import { createAnnotationNodeIdMap } from "./idRules";
 
 export const DEFAULT_ANNOTATION_FIELD: AnnotationField = "区域";
 
@@ -43,7 +42,7 @@ export function createDefaultCarlineBusiness(
     车线编号: "1",
     尺数: 10,
     档位: "1",
-    标注NodeId: createAnnotationNodeIdMap(),
+    标注NodeId: {},
   };
 }
 

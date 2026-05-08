@@ -222,6 +222,21 @@ export function applyDmlModifiers(doc: DocumentState): DocumentState {
     (id) => !existingDmlIds.has(id),
   );
 
+  for (const nodeId of nextOrder) {
+    const node = nextNodes[nodeId];
+    if (!node || node.business.type !== "车线") continue;
+    const nextAnnotationNodeId = { ...node.business.标注NodeId };
+    delete nextAnnotationNodeId.DML;
+    nextNodes[nodeId] = {
+      ...node,
+      business: {
+        ...node.business,
+        DML: undefined,
+        标注NodeId: nextAnnotationNodeId,
+      },
+    };
+  }
+
   // 用于位置查询的快照（仅含非 DML 节点；后续写入不影响已有位置数据）
   const cleanDoc: DocumentState = {
     ...doc,
@@ -273,8 +288,25 @@ export function applyDmlModifiers(doc: DocumentState): DocumentState {
 
   // Step 5：同步 domain.车线
   const nextDomainCarlines = doc.domain.车线.map((c) => {
+    const nextAnnotationNodeId = { ...c.标注NodeId };
+    delete nextAnnotationNodeId.DML;
     const dml = carlineIdToDml.get(c.id);
-    return dml != null ? { ...c, DML: dml } : c;
+    if (dml == null) {
+      return {
+        ...c,
+        DML: undefined,
+        标注NodeId: nextAnnotationNodeId,
+      };
+    }
+    const sceneNode = nextNodes[c.id];
+    return {
+      ...c,
+      DML: dml,
+      标注NodeId:
+        sceneNode && sceneNode.business.type === "车线"
+          ? sceneNode.business.标注NodeId
+          : nextAnnotationNodeId,
+    };
   });
 
   return {

@@ -98,8 +98,10 @@ export function createMarkOddEvenSession(
       const annotationId =
         node.business.type === "车线"
           ? node.business.标注NodeId.单双
-          : ensureAnnotationNodeId("单双");
-      const annotationNode = document.scene.nodes[annotationId];
+          : undefined;
+      const annotationNode = annotationId
+        ? document.scene.nodes[annotationId]
+        : undefined;
       if (
         annotationNode &&
         typeof annotationNode.fabricObject.left === "number" &&
@@ -224,17 +226,20 @@ export function buildMarkOddEvenPreviewDocument(
     if (!node || node.business.type !== "车线") continue;
     const nextAnnotationNodeId = ensureAnnotationNodeId(
       "单双",
-      node.business.标注NodeId.单双,
+      doubleLineMap.get(id) ? node.business.标注NodeId.单双 : undefined,
     );
+    const nextAnnotationNodeIdMap = { ...node.business.标注NodeId };
+    if (doubleIds.has(id)) {
+      nextAnnotationNodeIdMap.单双 = nextAnnotationNodeId;
+    } else {
+      delete nextAnnotationNodeIdMap.单双;
+    }
     nextNodes[id] = {
       ...node,
       business: {
         ...node.business,
         是双数: doubleIds.has(id),
-        标注NodeId: {
-          ...node.business.标注NodeId,
-          单双: nextAnnotationNodeId,
-        },
+        标注NodeId: nextAnnotationNodeIdMap,
       },
     };
   }
@@ -242,8 +247,22 @@ export function buildMarkOddEvenPreviewDocument(
   for (const line of doubleLineMap.values()) {
     const carlineNode = nextNodes[line.nodeId];
     if (!carlineNode || carlineNode.business.type !== "车线") continue;
-    const annotationNode = createDoubleAnnotationNode(
+    const annotationNodeId = ensureAnnotationNodeId(
+      "单双",
       carlineNode.business.标注NodeId.单双,
+    );
+    nextNodes[line.nodeId] = {
+      ...carlineNode,
+      business: {
+        ...carlineNode.business,
+        标注NodeId: {
+          ...carlineNode.business.标注NodeId,
+          单双: annotationNodeId,
+        },
+      },
+    };
+    const annotationNode = createDoubleAnnotationNode(
+      annotationNodeId,
       line.nodeId,
       line.hitPoint,
       session.labelFontSize,

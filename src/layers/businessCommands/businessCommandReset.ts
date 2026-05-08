@@ -5,6 +5,8 @@ type CarlineNode = EditorNode & {
   business: Extract<EditorNode["business"], { type: "车线" }>;
 };
 
+type CarlineAnnotationField = keyof CarlineNode["business"]["标注NodeId"];
+
 const EXTRACT_CARLINE_RESET_FIELDS = new Set<AnnotationField>([
   "车线编号",
   "档位",
@@ -62,6 +64,15 @@ function mapCarlineNodes(
   };
 }
 
+function omitAnnotationNodeIdField(
+  node: CarlineNode,
+  field: CarlineAnnotationField,
+): CarlineNode["business"]["标注NodeId"] {
+  const nextAnnotationNodeId = { ...node.business.标注NodeId };
+  delete nextAnnotationNodeId[field];
+  return nextAnnotationNodeId;
+}
+
 export function resetDocumentForExtractCarline(document: DocumentState) {
   const withoutAnnotations = removeAnnotationNodes(
     document,
@@ -92,6 +103,7 @@ export function resetDocumentForMarkGear(document: DocumentState) {
     business: {
       ...node.business,
       档位: "",
+      标注NodeId: omitAnnotationNodeIdField(node, "档位"),
     },
   }));
 
@@ -99,10 +111,15 @@ export function resetDocumentForMarkGear(document: DocumentState) {
     ...resetCarlines,
     domain: {
       ...resetCarlines.domain,
-      车线: resetCarlines.domain.车线.map((carline) => ({
-        ...carline,
-        档位: "",
-      })),
+      车线: resetCarlines.domain.车线.map((carline) => {
+        const nextAnnotationNodeId = { ...carline.标注NodeId };
+        delete nextAnnotationNodeId.档位;
+        return {
+          ...carline,
+          档位: "",
+          标注NodeId: nextAnnotationNodeId,
+        };
+      }),
     },
   };
 }
@@ -117,6 +134,7 @@ export function resetDocumentForMarkOddEven(document: DocumentState) {
     business: {
       ...node.business,
       是双数: false,
+      标注NodeId: omitAnnotationNodeIdField(node, "单双"),
     },
   }));
 
@@ -124,10 +142,15 @@ export function resetDocumentForMarkOddEven(document: DocumentState) {
     ...resetCarlines,
     domain: {
       ...resetCarlines.domain,
-      车线: resetCarlines.domain.车线.map((carline) => ({
-        ...carline,
-        是双数: false,
-      })),
+      车线: resetCarlines.domain.车线.map((carline) => {
+        const nextAnnotationNodeId = { ...carline.标注NodeId };
+        delete nextAnnotationNodeId.单双;
+        return {
+          ...carline,
+          是双数: false,
+          标注NodeId: nextAnnotationNodeId,
+        };
+      }),
     },
   };
 }

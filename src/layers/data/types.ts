@@ -16,10 +16,10 @@ export type DML值 = DmlValue;
  * - value 为对应标注在编辑器节点树中的 `NodeId`
  */
 export interface AnnotationNodeIdMap {
-  车线编号: NodeId;
-  档位: NodeId;
-  单双: NodeId;
-  DML: NodeId;
+  车线编号?: NodeId;
+  档位?: NodeId;
+  单双?: NodeId;
+  DML?: NodeId;
 }
 
 /** 标注字段枚举：用于标注节点的 `business` 类型。 */
