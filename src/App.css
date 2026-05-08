@@ -643,11 +643,17 @@
   height: 34px;
   padding: 0 12px;
   border-radius: 10px;
+  -webkit-appearance: none;
+  appearance: none;
   border: 1px solid var(--border);
   background: #ffffff;
   color: var(--text);
+  -webkit-text-fill-color: currentColor;
   cursor: pointer;
   transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
     box-shadow 0.15s ease,
     transform 0.15s ease;
 }
@@ -658,14 +664,14 @@
 }
 
 .btnPrimary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #ffffff;
+  background: #005fb8;
+  border-color: #005fb8;
+  color: #111111;
 }
 
 .btnPrimary:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
+  background: #006fd6;
+  border-color: #006fd6;
 }
 
 .btnDanger {
@@ -675,9 +681,20 @@
 
 .btn:disabled {
   cursor: not-allowed;
-  opacity: 0.5;
+  opacity: 1;
+  background: #e2e8f0;
+  border-color: #cbd5e1;
+  color: #475569;
+  -webkit-text-fill-color: currentColor;
   transform: none;
   box-shadow: none;
+}
+
+.btnPrimary:disabled {
+  background: #64748b;
+  border-color: #64748b;
+  color: #ffffff;
+  -webkit-text-fill-color: currentColor;
 }
 
 .banner {
@@ -1057,7 +1074,7 @@
 }
 
 .businessDialog .btnPrimary {
-  color: #dbeafe;
+  color: #111111;
   box-shadow: 0 8px 18px rgba(0, 122, 204, 0.22);
 }
 
@@ -1337,6 +1354,19 @@
 
 .extractCarlineSelectionItem {
   min-height: 34px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.extractCarlineSelectionItem > :first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.extractCarlineSelectionItem > :last-child {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 @media (max-width: 760px) {
