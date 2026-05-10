@@ -4,8 +4,10 @@ import './App.css';
 
 export default function App() {
   return (
-    <EditorProvider>
-      <EditorShell />
-    </EditorProvider>
+    <div className="svgEditorRoot">
+      <EditorProvider>
+        <EditorShell />
+      </EditorProvider>
+    </div>
   );
 }
