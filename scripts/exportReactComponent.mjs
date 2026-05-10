@@ -168,6 +168,7 @@ export function SvgEditor({ className, style }: SvgEditorProps) {
 function createIndexFile() {
   return `export { SvgEditor } from "./SvgEditor";
 export type { SvgEditorProps } from "./SvgEditor";
+export { buildExportSvg } from "./layers/view/FabricStage";
 `;
 }
 
