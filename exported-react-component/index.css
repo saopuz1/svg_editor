@@ -1,6 +1,6 @@
 /* 白色主题（参考附件布局风格，但整体浅色） */
 
-:root {
+.svgEditorRoot {
   --bg: #f6f7f9;
   --panel-bg: #ffffff;
   --panel-bg-soft: #f3f4f6;
@@ -19,28 +19,18 @@
   background: var(--bg);
 }
 
-html,
-body,
-#root {
+.svgEditorRoot {
   height: 100%;
 }
 
-body {
-  margin: 0;
-}
-
-.svgEditorHost {
-  height: 100%;
-  overflow: hidden;
-}
-
-button,
-input,
-textarea,
-select {
+.svgEditorRoot button,
+.svgEditorRoot input,
+.svgEditorRoot textarea,
+.svgEditorRoot select {
   font: inherit;
 }
 
-* {
+.svgEditorRoot,
+.svgEditorRoot * {
   box-sizing: border-box;
 }

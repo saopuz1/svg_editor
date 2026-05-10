@@ -10,9 +10,12 @@ export interface SvgEditorProps {
 }
 
 export function SvgEditor({ className, style }: SvgEditorProps) {
-  const hostClassName = ["svgEditorHost", className].filter(Boolean).join(" ");
+  const rootClassName = className
+    ? `svgEditorRoot ${className}`
+    : "svgEditorRoot";
+
   return (
-    <div className={hostClassName} style={style}>
+    <div className={rootClassName} style={style}>
       <EditorProvider>
         <EditorShell />
       </EditorProvider>
