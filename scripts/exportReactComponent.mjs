@@ -49,6 +49,13 @@ function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
 
+function resetDir(dirPath) {
+  if (fs.existsSync(dirPath)) {
+    fs.rmSync(dirPath, { recursive: true, force: true });
+  }
+  ensureDir(dirPath);
+}
+
 function readText(filePath) {
   return fs.readFileSync(filePath, "utf8");
 }
@@ -216,7 +223,7 @@ npm install ${PACKAGE_DEPENDENCIES.join(" ")}
 
 function main() {
   const targetDir = resolveTargetDir(process.argv[2]);
-  ensureDir(targetDir);
+  resetDir(targetDir);
 
   const { files, unresolvedLocalImports } = collectDeps(ENTRY_FILES);
   const copiedFiles = files.map((file) => copyToTarget(file, targetDir));
