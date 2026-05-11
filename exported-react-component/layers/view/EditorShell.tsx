@@ -811,17 +811,20 @@ export function EditorShell() {
       const businessTypeOptions = getAllowedBusinessTypesForFabricType(
         selectedNode.fabricObject.type,
       );
+      const isTextNode = isTextLikeNode(selectedNode);
       const isAnnotationNode = selectedNode.business.type === "标注";
       const isLineNode = isLineLikeNode(selectedNode);
+      const isReadOnlyBusinessType = isTextNode || isAnnotationNode || isLineNode;
       return (
         <div className="row" key={fieldId}>
           <div className="label">业务类型</div>
           <select
             className="input"
             value={selectedNode.business.type}
-            // Line-type business classification is derived from business flows; do not allow manual toggling.
-            disabled={isAnnotationNode || isLineNode}
+            // Text/line business classification is derived from import/business flows; do not allow manual toggling.
+            disabled={isReadOnlyBusinessType}
             onChange={(e) => {
+              if (isReadOnlyBusinessType) return;
               const nextType = e.currentTarget.value as NodeBusiness["type"];
               const provisionalBusiness = createBusinessForFabricTypeAndType(
                 selectedNode.fabricObject.type,

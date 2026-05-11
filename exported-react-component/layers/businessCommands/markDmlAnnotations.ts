@@ -18,7 +18,8 @@ import {
  * 按修改器顺序为所有车线节点计算 DML 值。
  * - 后面的修改器会覆盖前面的（last-write-wins）
  * - 未被任何修改器覆盖的车线不会出现在结果 Map 中
- * - 区间内按「车线编号」排序后，循环取 pattern[i % len]
+ * - 同一 modifier 内跨多个「范围」连续套用规律（不会在不同区域/档位间重置）
+ * - 单个范围内按「车线编号」排序后依次套用 pattern[cursor % len]
  */
 export function computeDmlAssignments(
   doc: DocumentState,
@@ -94,6 +95,8 @@ export function computeDmlAssignments(
   for (const mod of modifiers) {
     const pattern = mod.规律 as DmlValue[];
     if (pattern.length === 0) continue;
+    // Keep assignments continuous across multiple ranges within the same rule.
+    let cursor = 0;
 
     if (mod.type === "按区域自动标注DML") {
       for (const range of mod.范围) {
@@ -103,8 +106,9 @@ export function computeDmlAssignments(
           range.结束,
         );
 
-        matching.forEach((c, idx) => {
-          result.set(c.nodeId, pattern[idx % pattern.length]);
+        matching.forEach((c) => {
+          result.set(c.nodeId, pattern[cursor % pattern.length]);
+          cursor += 1;
         });
       }
     } else if (mod.type === "按档位自动标注DML") {
@@ -115,8 +119,9 @@ export function computeDmlAssignments(
           range.结束,
         );
 
-        matching.forEach((c, idx) => {
-          result.set(c.nodeId, pattern[idx % pattern.length]);
+        matching.forEach((c) => {
+          result.set(c.nodeId, pattern[cursor % pattern.length]);
+          cursor += 1;
         });
       }
     }

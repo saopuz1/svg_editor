@@ -38,6 +38,7 @@ export interface InspectorSection {
 }
 
 export function getInspectorSections(node: EditorNode): InspectorSection[] {
+  const isTextNode = isTextLikeNode(node);
   const sections: InspectorSection[] = [
     {
       id: "basic",
@@ -46,7 +47,7 @@ export function getInspectorSections(node: EditorNode): InspectorSection[] {
     },
   ];
 
-  if (isTextLikeNode(node)) {
+  if (isTextNode) {
     sections[0].fields.push("textContent");
   }
 
@@ -70,7 +71,7 @@ export function getInspectorSections(node: EditorNode): InspectorSection[] {
       "carlineAnnotationNodeIds",
     );
   }
-  if (isTextLikeNode(node) && node.business.type === "标注") {
+  if (isTextNode && node.business.type === "标注") {
     businessFields.push("annotationField", "annotationCarlineId");
   }
   if (!isLineLikeNode(node) && !isTextLikeNode(node)) {
@@ -83,20 +84,27 @@ export function getInspectorSections(node: EditorNode): InspectorSection[] {
     fields: businessFields,
   });
 
-  if (isTextLikeNode(node)) {
+  if (isTextNode) {
+    const isAnnotationText = node.business.type === "标注";
     sections.push({
       id: "annotationStyle",
-      title: "标注样式",
-      fields: [
-        "annotationStyleFontFamily",
-        "annotationStyleFontSize",
-        "annotationStyleTextColor",
-        "annotationStyleHasBorder",
-        "annotationStyleBorderTransparent",
-        "annotationStyleBorderBackgroundColor",
-        "annotationStyleBorderShape",
-        "annotationStyleBorderColor",
-      ],
+      title: isAnnotationText ? "标注样式" : "文本样式",
+      fields: isAnnotationText
+        ? [
+            "annotationStyleFontFamily",
+            "annotationStyleFontSize",
+            "annotationStyleTextColor",
+            "annotationStyleHasBorder",
+            "annotationStyleBorderTransparent",
+            "annotationStyleBorderBackgroundColor",
+            "annotationStyleBorderShape",
+            "annotationStyleBorderColor",
+          ]
+        : [
+            "annotationStyleFontFamily",
+            "annotationStyleFontSize",
+            "annotationStyleTextColor",
+          ],
     });
   }
 

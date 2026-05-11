@@ -338,6 +338,7 @@ export function applyNodeToObject(
   const interactionProps = {
     selectable: true,
     evented: true,
+    perPixelTargetFind: true,
     lockMovementX: isLocked,
     lockMovementY: isLocked,
     lockScalingX: isLocked,

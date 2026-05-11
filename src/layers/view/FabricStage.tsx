@@ -429,6 +429,8 @@ export const FabricStage = forwardRef<
       selectionBorderColor: "rgba(37, 99, 235, 0.9)",
       selectionLineWidth: 1.5,
       skipTargetFind: false,
+      perPixelTargetFind: true,
+      targetFindTolerance: 0,
     });
 
     // setDimensions 只放大了 backstore（canvas.width/height 属性乘以 DPR），
